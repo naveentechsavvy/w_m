@@ -6,6 +6,7 @@ import '../controllers/experience_controller.dart';
 import '../widgets/home_search_bar.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/experience_card.dart';
+import '../widgets/bottom_navigation.dart';
 
 class ExploreScreen extends StatelessWidget {
   const ExploreScreen({super.key});
@@ -25,22 +26,35 @@ class ExploreScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              const Text(
-                "👋 Good Evening",
-                style: TextStyle(
-                  fontSize: 16,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-
-              const SizedBox(height: 5),
-
-              const Text(
-                "Naveen",
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        "👋 Good Evening",
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      SizedBox(height: 5),
+                      Text(
+                        "Naveen",
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.notifications_none, size: 28),
+                    color: AppColors.textPrimary,
+                    onPressed: () {},
+                  ),
+                ],
               ),
 
               const SizedBox(height: 25),
@@ -71,19 +85,38 @@ class ExploreScreen extends StatelessWidget {
 
               const SizedBox(height: 15),
 
-              const SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    CategoryChip(title: "Adventure", selected: true),
-                    CategoryChip(title: "Coffee"),
-                    CategoryChip(title: "Cricket"),
-                    CategoryChip(title: "Music"),
-                    CategoryChip(title: "Cycling"),
-                    CategoryChip(title: "Food"),
-                  ],
+              Obx(() => SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: controller.categories.map((cat) {
+                        return CategoryChip(
+                          title: cat,
+                          selected: controller.selectedCategory.value == cat,
+                          onTap: () => controller.changeCategory(cat),
+                        );
+                      }).toList(),
+                    ),
+                  )),
+
+              const SizedBox(height: 30),
+
+              const Text(
+                "Nearby You",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
+
+              const SizedBox(height: 15),
+
+              Obx(() {
+                return Column(
+                  children: controller.nearby
+                      .map((e) => ExperienceCard(experience: e))
+                      .toList(),
+                );
+              }),
 
               const SizedBox(height: 30),
 
@@ -99,15 +132,40 @@ class ExploreScreen extends StatelessWidget {
 
               Obx(() {
                 return Column(
-                  children: controller.experiences
+                  children: controller.trending
                       .map((e) => ExperienceCard(experience: e))
                       .toList(),
                 );
               }),
+
+              const SizedBox(height: 30),
+
+              const Text(
+                "Recommended For You",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              Obx(() {
+                return Column(
+                  children: controller.recommended
+                      .map((e) => ExperienceCard(experience: e))
+                      .toList(),
+                );
+              }),
+
+              const SizedBox(height: 20),
+
             ],
           ),
         ),
       ),
+
+      bottomNavigationBar: const AppBottomNavigation(currentIndex: 1),
     );
   }
 }

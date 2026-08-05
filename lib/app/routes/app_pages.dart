@@ -9,6 +9,9 @@ import '../../features/profile/screens/profile_screen.dart';
 import '../../features/home/screens/choice_screen.dart';
 import '../../features/experience/screens/explore_screen.dart';
 import '../../features/experience/screens/exp_details_screen.dart';
+import '../../features/experience/screens/profile_view_screen.dart';
+import '../../features/home/home_placeholder_screen.dart';
+import '../../features/saved/saved_screen.dart';
 
 class AppPages {
   static final pages = [
@@ -35,11 +38,10 @@ class AppPages {
     name: AppRoutes.otp,
     page: () => OtpScreen(),
   ),
-
   GetPage(
-    name: AppRoutes.profile,
-    page: () => ProfileScreen(),
-  ),
+  name: AppRoutes.profile,
+  page: () => const ProfileViewScreen(),
+),
   GetPage(
   name: AppRoutes.explore,
   page: () => const ExploreScreen(),
@@ -49,5 +51,19 @@ GetPage(
   name: AppRoutes.experienceDetails,
   page: () => const ExpDetailsScreen(),
 ),
+GetPage(
+      name: AppRoutes.home,
+      page: () => const HomePlaceholderScreen(),
+    ),
+
+    GetPage(
+      name: AppRoutes.saved,
+      page: () => const SavedScreen(),
+    ),
+    GetPage(
+  name: AppRoutes.editProfile,
+  page: () => const ProfileScreen(),
+    ),
+    
   ];
 }
