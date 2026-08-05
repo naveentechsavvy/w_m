@@ -9,6 +9,8 @@ import '../../features/profile/screens/profile_screen.dart';
 import '../../features/home/screens/choice_screen.dart';
 import '../../features/experience/screens/explore_screen.dart';
 import '../../features/experience/screens/exp_details_screen.dart';
+import '../../features/experience/screens/create_meetup_screen.dart';
+
 
 class AppPages {
   static final pages = [
@@ -48,6 +50,10 @@ class AppPages {
 GetPage(
   name: AppRoutes.experienceDetails,
   page: () => const ExpDetailsScreen(),
+),
+GetPage(
+  name: AppRoutes.createExperience,
+  page: () => const CreateMeetupScreen(),
 ),
   ];
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 import '../controllers/experience_controller.dart';
 import '../widgets/home_search_bar.dart';
@@ -106,6 +107,16 @@ class ExploreScreen extends StatelessWidget {
               }),
             ],
           ),
+        ),
+      ),
+
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: AppColors.primary,
+        onPressed: () => Get.toNamed(AppRoutes.createExperience),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          "Create",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
     );
