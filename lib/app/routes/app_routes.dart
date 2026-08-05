@@ -12,4 +12,7 @@ abstract class AppRoutes {
   static const createExperience = '/create-experience';
   static const food = '/food';
   static const passport = '/passport';
+  static const home = '/home';
+  static const saved = '/saved';
+  static const String editProfile = "/edit-profile";
 }
