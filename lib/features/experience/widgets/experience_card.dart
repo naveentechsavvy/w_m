@@ -1,20 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
+import '../../../app/routes/app_routes.dart';
 import '../models/experience_model.dart';
 
 class ExperienceCard extends StatelessWidget {
 
   final Experience experience;
 
+  /// Optional override for tap behaviour. If not provided, tapping the
+  /// card navigates to the experience details screen, passing this
+  /// [experience] as the route argument.
+  final VoidCallback? onTap;
+
   const ExperienceCard({
     super.key,
     required this.experience,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
 
-    return Container(
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: onTap ??
+          () => Get.toNamed(
+                AppRoutes.experienceDetails,
+                arguments: experience,
+              ),
+      child: Container(
 
       margin: const EdgeInsets.only(bottom: 18),
 
@@ -104,6 +119,7 @@ class ExperienceCard extends StatelessWidget {
 
       ),
 
+      ),
     );
 
   }

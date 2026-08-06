@@ -2,8 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 import '../controllers/experience_controller.dart';
 import '../models/experience_model.dart';
@@ -27,11 +30,14 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   String selectedCategory = "Adventure";
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
-  bool foodAvailable = false;
   bool isPrivate = false;
 
   Uint8List? bannerBytes;
   bool saving = false;
+
+  // NEW — real coordinates selected on the map
+  double? selectedLat;
+  double? selectedLng;
 
   final List<String> categoryOptions = const [
     "Adventure",
@@ -84,13 +90,169 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     }
   }
 
+  // ===========================
+  // Location picker (bottom sheet) — now a real interactive Google Map
+  // ===========================
+  Future<void> pickLocation() async {
+    LatLng initialPosition = const LatLng(17.3850, 78.4867); // Hyderabad default
+    if (selectedLat != null && selectedLng != null) {
+      initialPosition = LatLng(selectedLat!, selectedLng!);
+    }
+
+    LatLng pickedPosition = initialPosition;
+    GoogleMapController? mapController;
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> useCurrentLocation() async {
+              try {
+                final permission = await Geolocator.checkPermission();
+                LocationPermission finalPermission = permission;
+                if (permission == LocationPermission.denied) {
+                  finalPermission = await Geolocator.requestPermission();
+                }
+                if (finalPermission == LocationPermission.denied ||
+                    finalPermission == LocationPermission.deniedForever) {
+                  Get.snackbar("Location Permission Needed",
+                      "Please allow location access to use this feature");
+                  return;
+                }
+
+                final position = await Geolocator.getCurrentPosition();
+                final newPos = LatLng(position.latitude, position.longitude);
+                setModalState(() {
+                  pickedPosition = newPos;
+                });
+                mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
+              } catch (e) {
+                Get.snackbar("Location Error", e.toString());
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        height: 4,
+                        width: 40,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      "Set Meetup Location",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "Tap on the map to drop a pin at the exact spot",
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 16),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: SizedBox(
+                        height: 260,
+                        width: double.infinity,
+                        child: GoogleMap(
+                          initialCameraPosition: CameraPosition(
+                            target: initialPosition,
+                            zoom: 14,
+                          ),
+                          onMapCreated: (controllerParam) {
+                            mapController = controllerParam;
+                          },
+                          onTap: (tappedPosition) {
+                            setModalState(() {
+                              pickedPosition = tappedPosition;
+                            });
+                          },
+                          markers: {
+                            Marker(
+                              markerId: const MarkerId("selected"),
+                              position: pickedPosition,
+                            ),
+                          },
+                          myLocationButtonEnabled: false,
+                          zoomControlsEnabled: false,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton.icon(
+                      onPressed: useCurrentLocation,
+                      icon: const Icon(Icons.my_location, color: AppColors.primary),
+                      label: const Text("Use Current Location"),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context, {
+                          'lat': pickedPosition.latitude,
+                          'lng': pickedPosition.longitude,
+                        }),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          "Confirm Location",
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      final lat = result['lat'] as double;
+      final lng = result['lng'] as double;
+      setState(() {
+        selectedLat = lat;
+        selectedLng = lng;
+        // No geocoding package yet, so we display coordinates directly.
+        // Add the `geocoding` package later if you want a readable
+        // address like "Banjara Hills, Hyderabad" instead.
+        locationController.text = "${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}";
+      });
+    }
+  }
+
   bool validate() {
     if (titleController.text.trim().isEmpty) {
       Get.snackbar("Missing Title", "Please enter a meetup title");
       return false;
     }
     if (locationController.text.trim().isEmpty) {
-      Get.snackbar("Missing Location", "Please enter a location");
+      Get.snackbar("Missing Location", "Please set a location");
       return false;
     }
     if (selectedDate == null) {
@@ -129,7 +291,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       selectedTime!.minute,
     );
 
-    // Dummy save for now — will be replaced with Firestore write
     final newExperience = Experience(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: titleController.text.trim(),
@@ -140,28 +301,57 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       price: double.parse(priceController.text.trim()),
       joined: 0,
       seats: int.parse(seatsController.text.trim()),
-      foodAvailable: foodAvailable,
+      foodAvailable: false,
       description: descriptionController.text.trim(),
       isPrivate: isPrivate,
       participants: const [],
       gallery: const [],
+      latitude: selectedLat ?? 0.0,
+      longitude: selectedLng ?? 0.0,
     );
 
-    await Future.delayed(const Duration(milliseconds: 400)); // simulated save
+    try {
+      debugPrint("[CreateMeetup] submit() started");
 
-    controller.addExperience(newExperience);
+      await controller.addExperience(newExperience).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception(
+              "Timed out after 15s — check internet connection and Firestore security rules.");
+        },
+      );
 
-    setState(() {
-      saving = false;
-    });
+      debugPrint("[CreateMeetup] addExperience() succeeded");
 
-    Get.back();
-    Get.snackbar(
-      "Meetup Created",
-      "\"${newExperience.title}\" is now live",
-      backgroundColor: AppColors.primary,
-      colorText: Colors.white,
-    );
+      setState(() {
+        saving = false;
+      });
+
+      // Navigate to My Meetups (Created tab is index 0 by default)
+      // instead of just popping back, so the user immediately sees
+      // confirmation that the meetup was created.
+      Get.offNamed(AppRoutes.myMeetups);
+      Get.snackbar(
+        "Meetup Created",
+        "\"${newExperience.title}\" is now live",
+        backgroundColor: AppColors.primary,
+        colorText: Colors.white,
+      );
+    } catch (e, stackTrace) {
+      debugPrint("[CreateMeetup] FAILED: $e");
+      debugPrint("[CreateMeetup] StackTrace: $stackTrace");
+
+      setState(() {
+        saving = false;
+      });
+      Get.snackbar(
+        "Failed to Create Meetup",
+        e.toString(),
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 6),
+      );
+    }
   }
 
   InputDecoration fieldDecoration(String hint) {
@@ -214,7 +404,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // Banner upload
             GestureDetector(
               onTap: pickBanner,
               child: Container(
@@ -269,13 +458,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
               decoration: fieldDecoration("e.g. Sunday Coffee Meetup"),
             ),
 
-            fieldLabel("DESCRIPTION"),
-            TextField(
-              controller: descriptionController,
-              maxLines: 3,
-              decoration: fieldDecoration("What's this meetup about?"),
-            ),
-
             fieldLabel("CATEGORY"),
             DropdownButtonFormField<String>(
               initialValue: selectedCategory,
@@ -290,11 +472,45 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
               },
             ),
 
-            fieldLabel("LOCATION"),
+            fieldLabel("DESCRIPTION"),
             TextField(
-              controller: locationController,
-              decoration: fieldDecoration("Area / City")
-                  .copyWith(prefixIcon: const Icon(Icons.location_on_outlined)),
+              controller: descriptionController,
+              maxLines: 3,
+              decoration: fieldDecoration("What's this meetup about?"),
+            ),
+
+            fieldLabel("LOCATION"),
+            GestureDetector(
+              onTap: pickLocation,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined,
+                        size: 18, color: AppColors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        locationController.text.isEmpty
+                            ? "Set location on map"
+                            : locationController.text,
+                        style: TextStyle(
+                          color: locationController.text.isEmpty
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right,
+                        size: 20, color: AppColors.textSecondary),
+                  ],
+                ),
+              ),
             ),
 
             fieldLabel("DATE & TIME"),
@@ -370,22 +586,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
               decoration: fieldDecoration("e.g. 20"),
             ),
 
-            const SizedBox(height: 18),
-
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              activeThumbColor: AppColors.primary,
-              title: const Text(
-                "Food Available",
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              value: foodAvailable,
-              onChanged: (value) {
-                setState(() {
-                  foodAvailable = value;
-                });
-              },
-            ),
+            const SizedBox(height: 10),
 
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -394,9 +595,11 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                 "Private Meetup",
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
-              subtitle: const Text(
-                "Only people you approve can join",
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              subtitle: Text(
+                isPrivate
+                    ? "Only people with the invite code/QR can join"
+                    : "Anyone nearby can find and join",
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
               value: isPrivate,
               onChanged: (value) {

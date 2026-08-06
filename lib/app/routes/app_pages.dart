@@ -12,6 +12,8 @@ import '../../features/experience/screens/profile_view_screen.dart';
 import '../../features/home/home_placeholder_screen.dart';
 import '../../features/saved/saved_screen.dart';
 import '../../features/experience/screens/create_meetup_screen.dart';
+import '../../features/experience/screens/my_meetups_screen.dart';
+import '../../features/experience/screens/join_requests_screen.dart';
 
 class AppPages {
   static final pages = [
@@ -62,6 +64,14 @@ class AppPages {
     GetPage(
       name: AppRoutes.createExperience,
       page: () => const CreateMeetupScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.myMeetups,
+      page: () => const MyMeetupsScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.joinRequests,
+      page: () => const JoinRequestsScreen(),
     ),
   ];
 }
