@@ -20,6 +20,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String gender = "Male";
 
+  bool isEditMode = false;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    loadExistingProfile();
+  }
+
+  Future<void> loadExistingProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final alreadyCompleted = prefs.getBool("profile_completed") ?? false;
+
+    nameController.text = prefs.getString("full_name") ?? "";
+    occupationController.text = prefs.getString("occupation") ?? "";
+    cityController.text = prefs.getString("city") ?? "";
+    gender = prefs.getString("gender") ?? "Male";
+
+    setState(() {
+      isEditMode = alreadyCompleted;
+      loading = false;
+    });
+  }
+
   Future<void> saveProfile() async {
 
     if (nameController.text.isEmpty ||
@@ -43,15 +68,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     await prefs.setBool("profile_completed", true);
 
-    Get.offAllNamed(AppRoutes.explore);
+    if (isEditMode) {
+      Get.back(result: true);
+    } else {
+      Get.offAllNamed(AppRoutes.explore);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
 
+    if (loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
 
       backgroundColor: AppColors.background,
+
+      appBar: isEditMode
+          ? AppBar(
+              backgroundColor: AppColors.background,
+              elevation: 0,
+              centerTitle: true,
+              title: const Text(
+                "Edit Profile",
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              iconTheme: const IconThemeData(color: AppColors.textPrimary),
+            )
+          : null,
 
       body: SafeArea(
 
@@ -67,26 +118,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 40),
 
-              Text(
-                "Complete Profile",
-                style: TextStyle(
-                  fontSize: 38,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+              if (!isEditMode) ...[
+                Text(
+                  "Complete Profile",
+                  style: TextStyle(
+                    fontSize: 38,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 10),
+                const SizedBox(height: 10),
 
-              Text(
-                "Tell us a little about yourself.",
-                style: TextStyle(
-                  fontSize: 18,
-                  color: AppColors.textSecondary,
+                Text(
+                  "Tell us a little about yourself.",
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 40),
+                const SizedBox(height: 40),
+              ],
 
               TextField(
                 controller: nameController,
@@ -165,9 +218,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     backgroundColor: AppColors.primary,
                   ),
 
-                  child: const Text(
-                    "Continue",
-                    style: TextStyle(
+                  child: Text(
+                    isEditMode ? "Save Changes" : "Continue",
+                    style: const TextStyle(
                       fontSize: 18,
                       color: Colors.white,
                     ),
