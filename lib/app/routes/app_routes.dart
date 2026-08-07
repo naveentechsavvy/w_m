@@ -15,4 +15,7 @@ abstract class AppRoutes {
   static const home = '/home';
   static const saved = '/saved';
   static const String editProfile = "/edit-profile";
+
+  static const myMeetups = '/my-meetups';
+  static const joinRequests = '/join-requests';
 }

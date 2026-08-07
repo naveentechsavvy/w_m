@@ -42,10 +42,17 @@ class _SplashScreenState extends State<SplashScreen>
     final prefs = await SharedPreferences.getInstance();
 
     bool loggedIn = prefs.getBool("is_logged_in") ?? false;
-    bool profileCompleted =
-        prefs.getBool("profile_completed") ?? false;
     bool onboardingCompleted =
         prefs.getBool("onboarding_completed") ?? false;
+
+    // NOTE: "profile_completed" is intentionally NOT checked here anymore.
+    // Previously an incomplete profile sent the user to AppRoutes.profile
+    // (ProfileViewScreen) on every relaunch, with no way to clear the flag
+    // from that screen — causing a permanent redirect loop back to Profile.
+    // Per product decision, profile completion should never block access
+    // to Explore. Users can complete/edit their profile any time via the
+    // Profile tab (AppRoutes.editProfile), which still sets the flag when
+    // they choose to fill it in.
 
     await Future.delayed(const Duration(seconds: 2));
 
@@ -53,8 +60,6 @@ class _SplashScreenState extends State<SplashScreen>
       Get.offAllNamed(AppRoutes.onboarding);
     } else if (!loggedIn) {
       Get.offAllNamed(AppRoutes.login);
-    } else if (!profileCompleted) {
-      Get.offAllNamed(AppRoutes.profile);
     } else {
       Get.offAllNamed(AppRoutes.explore);
     }

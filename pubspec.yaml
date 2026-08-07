@@ -36,6 +36,7 @@ dependencies:
   # Maps
   google_maps_flutter: ^2.12.3
   geolocator: ^14.0.2
+  geocoding: ^5.0.0
 
   # Utilities
   intl: ^0.20.2

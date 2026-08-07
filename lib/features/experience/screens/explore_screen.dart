@@ -50,10 +50,20 @@ class ExploreScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.notifications_none, size: 28),
-                    color: AppColors.textPrimary,
-                    onPressed: () {},
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.groups_outlined, size: 26),
+                        color: AppColors.textPrimary,
+                        tooltip: "My Meetups",
+                        onPressed: () => Get.toNamed(AppRoutes.myMeetups),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.notifications_none, size: 28),
+                        color: AppColors.textPrimary,
+                        onPressed: () {},
+                      ),
+                    ],
                   ),
                 ],
               ),
