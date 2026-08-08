@@ -10,10 +10,11 @@ import '../../features/experience/screens/explore_screen.dart';
 import '../../features/experience/screens/exp_details_screen.dart';
 import '../../features/experience/screens/profile_view_screen.dart';
 import '../../features/home/home_placeholder_screen.dart';
-import '../../features/saved/saved_screen.dart';
 import '../../features/experience/screens/create_meetup_screen.dart';
 import '../../features/experience/screens/my_meetups_screen.dart';
-import '../../features/experience/screens/join_requests_screen.dart';
+import '../../features/notifications/screens/notifications_screen.dart';
+import '../../features/chat/screens/chat_screen.dart';
+import '../../features/chat/bindings/chat_binding.dart';
 
 class AppPages {
   static final pages = [
@@ -54,10 +55,6 @@ class AppPages {
       page: () => const HomePlaceholderScreen(),
     ),
     GetPage(
-      name: AppRoutes.saved,
-      page: () => const SavedScreen(),
-    ),
-    GetPage(
       name: AppRoutes.editProfile,
       page: () => const ProfileScreen(),
     ),
@@ -70,8 +67,13 @@ class AppPages {
       page: () => const MyMeetupsScreen(),
     ),
     GetPage(
-      name: AppRoutes.joinRequests,
-      page: () => const JoinRequestsScreen(),
+      name: AppRoutes.notifications,
+      page: () => const NotificationsScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.chat,
+      page: () => const ChatScreen(),
+      binding: ChatBinding(),
     ),
   ];
 }

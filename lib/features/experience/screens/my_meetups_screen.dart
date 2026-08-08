@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 import '../controllers/join_requests_controller.dart';
 import '../controllers/my_meetups_controller.dart';
@@ -93,11 +92,6 @@ class MyMeetupsScreen extends StatelessWidget {
           experience: meetup,
           statusLabel: pendingCount > 0 ? "$pendingCount Pending" : null,
           statusColor: AppColors.warning,
-          actionLabel: "View Requests",
-          onActionTap: () => Get.toNamed(
-            AppRoutes.joinRequests,
-            arguments: meetup.id,
-          ),
         );
       },
     );

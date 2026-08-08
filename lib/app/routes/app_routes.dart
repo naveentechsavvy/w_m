@@ -13,9 +13,10 @@ abstract class AppRoutes {
   static const food = '/food';
   static const passport = '/passport';
   static const home = '/home';
-  static const saved = '/saved';
   static const String editProfile = "/edit-profile";
 
   static const myMeetups = '/my-meetups';
-  static const joinRequests = '/join-requests';
+  static const notifications = '/notifications';
+
+  static const chat = '/chat';
 }

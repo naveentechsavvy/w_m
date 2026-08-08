@@ -487,12 +487,6 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                 onTap: openEditProfileSheet,
               ),
 
-              menuTile(
-                Icons.favorite_border,
-                "Saved Experiences",
-                onTap: () => Get.toNamed(AppRoutes.saved),
-              ),
-
               const SizedBox(height: 10),
 
               sectionLabel("PERSONAL INFO"),
@@ -537,7 +531,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
         ),
       ),
 
-      bottomNavigationBar: const AppBottomNavigation(currentIndex: 3),
+      bottomNavigationBar: const AppBottomNavigation(currentIndex: 2),
     );
   }
 }

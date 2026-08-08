@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 import '../controllers/join_requests_controller.dart';
 import '../models/experience_model.dart';
@@ -15,6 +17,9 @@ class ExpDetailsScreen extends StatelessWidget {
     final joinRequestsController = Get.find<JoinRequestsController>();
 
     final bool isMine = experience.organizerName == "You";
+    final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final bool isParticipant = experience.participants.contains(currentUid);
+    final bool canOpenChat = isMine || isParticipant;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -55,13 +60,35 @@ class ExpDetailsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      experience.title,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            experience.title,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (canOpenChat)
+                          IconButton(
+                            tooltip: "Group Chat",
+                            onPressed: () => Get.toNamed(
+                              AppRoutes.chat,
+                              arguments: {
+                                'meetupId': experience.id,
+                                'meetupTitle': experience.title,
+                              },
+                            ),
+                            icon: const Icon(
+                              Icons.chat_bubble_outline,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
 

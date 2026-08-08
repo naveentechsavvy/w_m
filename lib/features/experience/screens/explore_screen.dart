@@ -61,7 +61,8 @@ class ExploreScreen extends StatelessWidget {
                       IconButton(
                         icon: const Icon(Icons.notifications_none, size: 28),
                         color: AppColors.textPrimary,
-                        onPressed: () {},
+                        tooltip: "Notifications",
+                        onPressed: () => Get.toNamed(AppRoutes.notifications),
                       ),
                     ],
                   ),
