@@ -8,39 +8,155 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/message_model.dart';
 import '../repositories/chat_repository.dart';
 
-/// Chat for a single meetup's group. Opened via
-/// Get.toNamed(AppRoutes.chat, arguments: {'meetupId': id, 'meetupTitle': title})
+/// Chat controller for all three chat types. Opened via:
+///
+/// Group chat:
+///   Get.toNamed(AppRoutes.chat, arguments: {
+///     'chatType': 'group',
+///     'meetupId': id,
+///     'meetupTitle': title,
+///   });
+///
+/// Private / Organizer chat:
+///   Get.toNamed(AppRoutes.chat, arguments: {
+///     'chatType': 'private', // or 'organizer'
+///     'meetupId': id,
+///     'meetupTitle': title,
+///     'otherUserId': otherUid,
+///     'otherUserName': otherName,
+///   });
+///
+/// A fresh ChatController is created per chat via binding (tag = roomId)
+/// rather than reused as a singleton — otherwise switching between a
+/// group chat and a private chat in the same session would collide on a
+/// single untagged Get.find<ChatController>() instance. Register it as:
+///   Get.lazyPut<ChatController>(() => ChatController(), tag: roomId);
+/// and resolve the same way in ChatScreen.
 class ChatController extends GetxController {
   final ChatRepository repository = ChatRepository();
 
+  /// Computes the same roomId the controller will use internally, from
+  /// raw route arguments + the current uid. Exposed as a static method so
+  /// chat_binding.dart can compute an identical tag BEFORE the controller
+  /// is constructed — e.g.:
+  ///
+  ///   final roomId = ChatController.resolveRoomId(Get.arguments, uid);
+  ///   Get.lazyPut<ChatController>(() => ChatController(), tag: roomId);
+  ///
+  /// and ChatScreen resolves with the same tag:
+  ///
+  ///   Get.find<ChatController>(tag: ChatController.resolveRoomId(...))
+  ///
+  /// This keeps group/private/organizer chats from colliding on a single
+  /// untagged controller instance if more than one is ever alive at once.
+  static String resolveRoomId(Map args, String currentUid) {
+    final chatType = ChatType.fromValue(args['chatType'] as String?);
+    final meetupId = args['meetupId'] ?? '';
+    if (chatType == ChatType.group) return meetupId;
+    final otherUserId = args['otherUserId'] as String? ?? '';
+    return ChatRepository.buildDirectRoomId(
+      meetupId: meetupId,
+      uidA: currentUid,
+      uidB: otherUserId,
+    );
+  }
+
+  late final ChatType chatType;
   late final String meetupId;
   late final String meetupTitle;
+  late final String roomId;
+
+  /// Only set for private/organizer chats. Null for group chat.
+  String? otherUserId;
+  String? otherUserName;
 
   final RxList<Message> messages = <Message>[].obs;
   final RxBool isSending = false.obs;
+  final RxBool isReady = false.obs;
   final TextEditingController textController = TextEditingController();
 
   StreamSubscription<List<Message>>? _sub;
   String _senderName = 'You';
 
-  String get currentUid => FirebaseAuth.instance.currentUser!.uid;
+  String? get currentUid => FirebaseAuth.instance.currentUser?.uid;
+
+  /// Title shown in the app bar: meetup title for group chat, the other
+  /// person's name for private/organizer chat.
+  String get displayTitle {
+    switch (chatType) {
+      case ChatType.group:
+        return meetupTitle.isNotEmpty ? meetupTitle : 'Group Chat';
+      case ChatType.private:
+      case ChatType.organizer:
+        return otherUserName?.isNotEmpty == true
+            ? otherUserName!
+            : (chatType == ChatType.organizer ? 'Organizer' : 'Chat');
+    }
+  }
 
   @override
   void onInit() {
     super.onInit();
+
     final args = Get.arguments;
-    meetupId = args is Map ? (args['meetupId'] ?? '') : (args ?? '');
-    meetupTitle = args is Map ? (args['meetupTitle'] ?? '') : '';
+    final map = args is Map ? args : <String, dynamic>{};
 
-    _loadSenderName();
+    chatType = ChatType.fromValue(map['chatType'] as String?);
+    meetupId = map['meetupId'] ?? '';
+    meetupTitle = map['meetupTitle'] ?? '';
+    otherUserId = map['otherUserId'] as String?;
+    otherUserName = map['otherUserName'] as String?;
 
-    _sub = repository.streamMessages(meetupId).listen(
+    if ((chatType == ChatType.private || chatType == ChatType.organizer) &&
+        (otherUserId == null || otherUserId!.isEmpty)) {
+      // Fail loudly during development rather than silently loading the
+      // wrong room — a missing otherUserId here means a caller forgot to
+      // pass route arguments correctly.
+      throw ArgumentError(
+        'ChatController: otherUserId is required for chatType '
+        '${chatType.value}',
+      );
+    }
+
+    roomId = chatType == ChatType.group
+        ? meetupId
+        : ChatRepository.buildDirectRoomId(
+            meetupId: meetupId,
+            uidA: currentUid ?? '',
+            uidB: otherUserId!,
+          );
+
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadSenderName();
+    _subscribeToMessages();
+    isReady.value = true;
+  }
+
+  // Profile data currently lives in SharedPreferences (see
+  // ProfileViewScreen), not a Firestore users doc — matching that here.
+  // Awaited before subscribing so the first message a user sends can
+  // never go out with the placeholder name "You" — the previous
+  // fire-and-forget version had a race where a fast sender could hit
+  // send() before this resolved, permanently writing the wrong name.
+  Future<void> _loadSenderName() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString('full_name') ?? '';
+    if (name.trim().isNotEmpty) {
+      _senderName = name.trim();
+    }
+  }
+
+  void _subscribeToMessages() {
+    _sub = repository.streamMessages(roomId).listen(
       (list) {
         messages.assignAll(list);
       },
       onError: (error) {
         // Without this handler, a Firestore error (e.g. a missing
-        // composite index on meetupId + sentAt) fails silently and the
+        // composite index on roomId + sentAt) fails silently and the
         // UI is stuck showing "No messages yet" with no indication why.
         debugPrint('Chat stream error: $error');
         Get.snackbar(
@@ -50,16 +166,6 @@ class ChatController extends GetxController {
         );
       },
     );
-  }
-
-  // Profile data currently lives in SharedPreferences (see
-  // ProfileViewScreen), not a Firestore users doc — matching that here.
-  Future<void> _loadSenderName() async {
-    final prefs = await SharedPreferences.getInstance();
-    final name = prefs.getString('full_name') ?? '';
-    if (name.trim().isNotEmpty) {
-      _senderName = name.trim();
-    }
   }
 
   @override
@@ -73,14 +179,33 @@ class ChatController extends GetxController {
     final text = textController.text.trim();
     if (text.isEmpty) return;
 
+    final uid = currentUid;
+    if (uid == null) {
+      Get.snackbar(
+        'Not signed in',
+        'Please sign in again to send messages.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
     isSending.value = true;
     try {
       await repository.sendMessage(
+        roomId: roomId,
         meetupId: meetupId,
+        chatType: chatType,
         senderName: _senderName,
         text: text,
       );
       textController.clear();
+    } catch (e) {
+      debugPrint('Send message error: $e');
+      Get.snackbar(
+        'Message not sent',
+        'Please check your connection and try again.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
     } finally {
       isSending.value = false;
     }

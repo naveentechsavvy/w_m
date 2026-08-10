@@ -4,6 +4,13 @@ import '../models/experience_model.dart';
 class ExperienceDataSource {
   final _col = FirebaseFirestore.instance.collection('meetups');
 
+  /// Exposes a doc reference for the 'meetups' collection so other
+  /// datasources (e.g. JoinRequestDataSource) can include a meetup doc
+  /// in a Firestore transaction without duplicating the collection name
+  /// as a raw string in a second place.
+  DocumentReference<Map<String, dynamic>> meetupDocRef(String id) =>
+      _col.doc(id);
+
   Future<String> createMeetup(Experience experience) async {
     final docRef = _col.doc();
     await docRef.set(experience.toMap());

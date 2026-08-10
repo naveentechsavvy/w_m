@@ -19,13 +19,13 @@ class ChatScreen extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        title: Text(
-          controller.meetupTitle.isNotEmpty
-              ? controller.meetupTitle
-              : "Group Chat",
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
+        title: Obx(
+          () => Text(
+            controller.displayTitle,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ),
@@ -33,16 +33,22 @@ class ChatScreen extends StatelessWidget {
         children: [
           Expanded(
             child: Obx(() {
+              if (!controller.isReady.value) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
               final messages = controller.messages;
 
               if (messages.isEmpty) {
-                return const Center(
+                return Center(
                   child: Padding(
-                    padding: EdgeInsets.all(32),
+                    padding: const EdgeInsets.all(32),
                     child: Text(
-                      "No messages yet. Say hi to the group!",
+                      controller.chatType == ChatType.group
+                          ? "No messages yet. Say hi to the group!"
+                          : "No messages yet. Say hi!",
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 15,
                       ),
@@ -51,12 +57,20 @@ class ChatScreen extends StatelessWidget {
                 );
               }
 
+              // Sender name label above a bubble only makes sense in
+              // group chat, where more than one other participant can
+              // appear in the thread. In private/organizer chat there's
+              // only ever one other person, so the label is redundant
+              // clutter.
+              final showSenderLabel = controller.chatType == ChatType.group;
+
               return ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
                   final Message message = messages[index];
-                  final bool isMine = message.senderId == controller.currentUid;
+                  final bool isMine =
+                      message.senderId == controller.currentUid;
 
                   return Align(
                     alignment:
@@ -90,7 +104,7 @@ class ChatScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (!isMine)
+                          if (!isMine && showSenderLabel)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
