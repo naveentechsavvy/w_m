@@ -50,7 +50,7 @@ class _SplashScreenState extends State<SplashScreen>
     // (ProfileViewScreen) on every relaunch, with no way to clear the flag
     // from that screen — causing a permanent redirect loop back to Profile.
     // Per product decision, profile completion should never block access
-    // to Explore. Users can complete/edit their profile any time via the
+    // to Home. Users can complete/edit their profile any time via the
     // Profile tab (AppRoutes.editProfile), which still sets the flag when
     // they choose to fill it in.
 
@@ -61,7 +61,7 @@ class _SplashScreenState extends State<SplashScreen>
     } else if (!loggedIn) {
       Get.offAllNamed(AppRoutes.login);
     } else {
-      Get.offAllNamed(AppRoutes.explore);
+      Get.offAllNamed(AppRoutes.home);
     }
   }
 

@@ -34,15 +34,8 @@ class HomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Expanded(
-                        child: Text(
-                          "Good Morning, ${controller.userName} 👋",
-                          style: AppTextStyles.heading3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
                       IconButton(
                         icon: const Icon(Icons.groups_outlined, size: 26),
                         color: AppColors.textPrimary,
