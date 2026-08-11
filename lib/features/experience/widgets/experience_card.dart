@@ -87,6 +87,25 @@ class ExperienceCard extends StatelessWidget {
                   ),
                 ),
 
+                const SizedBox(height: 6),
+
+                if (experience.reviewCount > 0)
+                  Row(
+                    children: [
+                      const Icon(Icons.star, size: 16, color: Color(0xFFFFB300)),
+                      const SizedBox(width: 4),
+                      Text(
+                        experience.avgRating.toStringAsFixed(1),
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        "· ${experience.reviewCount} ${experience.reviewCount == 1 ? 'review' : 'reviews'}",
+                        style: const TextStyle(color: Colors.black54, fontSize: 13),
+                      ),
+                    ],
+                  ),
+
                 const SizedBox(height:8),
 
                 Text(experience.location),

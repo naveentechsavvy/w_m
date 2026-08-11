@@ -16,6 +16,8 @@ import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/chat/screens/chat_screen.dart';
 import '../../features/chat/bindings/chat_binding.dart';
 import '../../features/experience/bindings/experience_details_binding.dart';
+import '../../features/reviews/screens/reviews_screen.dart';
+import '../../features/reviews/screens/write_review_screen.dart';
 
 class AppPages {
   static final pages = [
@@ -76,6 +78,14 @@ class AppPages {
       name: AppRoutes.chat,
       page: () => const ChatScreen(),
       binding: ChatBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.reviews,
+      page: () => const ReviewsScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.writeReview,
+      page: () => const WriteReviewScreen(),
     ),
   ];
 }

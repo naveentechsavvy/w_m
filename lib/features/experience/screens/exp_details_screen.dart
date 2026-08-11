@@ -5,6 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../reviews/controllers/review_controller.dart';
+import '../../reviews/widgets/rating_summary.dart';
+import '../../reviews/widgets/review_card.dart';
 import '../controllers/experience_controller.dart';
 import '../controllers/join_requests_controller.dart';
 import '../models/experience_model.dart';
@@ -32,6 +35,10 @@ class ExpDetailsScreen extends StatelessWidget {
     final Experience experience = Get.arguments as Experience;
     final joinRequestsController = Get.find<JoinRequestsController>();
     final experienceController = Get.find<ExperienceController>();
+    final reviewController = Get.put(
+      ReviewController(meetupId: experience.id),
+      tag: experience.id,
+    );
 
     final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
@@ -117,6 +124,13 @@ class ExpDetailsScreen extends StatelessWidget {
                           ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+
+                    RatingSummary(
+                      avgRating: experience.avgRating,
+                      reviewCount: experience.reviewCount,
+                    ),
+
                     const SizedBox(height: 8),
 
                     // Location row — shows distance (when GPS is
@@ -316,6 +330,85 @@ class ExpDetailsScreen extends StatelessWidget {
                           ),
                         );
                       }),
+
+                    const SizedBox(height: 32),
+
+                    // --------------------------------------------------
+                    // REVIEWS SECTION
+                    // --------------------------------------------------
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "Reviews",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        if (experience.reviewCount > 0)
+                          TextButton(
+                            onPressed: () => Get.toNamed(
+                              AppRoutes.reviews,
+                              arguments: experience,
+                            ),
+                            child: const Text("See All"),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    Obx(() {
+                      if (reviewController.isLoading.value) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      if (reviewController.reviews.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            "No reviews yet. Be the first to share your experience!",
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        );
+                      }
+                      return Column(
+                        children: reviewController.reviews
+                            .take(2)
+                            .map((r) => ReviewCard(review: r))
+                            .toList(),
+                      );
+                    }),
+
+                    const SizedBox(height: 8),
+
+                    Obx(() {
+                      if (!reviewController.canReview(experience)) {
+                        return const SizedBox.shrink();
+                      }
+                      return SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          onPressed: () => Get.toNamed(
+                            AppRoutes.writeReview,
+                            arguments: experience,
+                          ),
+                          icon: const Icon(Icons.rate_review_outlined),
+                          label: const Text("Write a Review"),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
 
                     const SizedBox(height: 20),
                   ],

@@ -6,6 +6,7 @@ import '../../../app/theme/colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../experience/controllers/home_controller.dart';
+import '../../experience/widgets/bottom_navigation.dart';
 import '../../experience/widgets/home_search_bar.dart';
 import '../../experience/widgets/upcoming_meetup_card.dart';
 
@@ -117,7 +118,7 @@ class HomeScreen extends StatelessWidget {
           );
         }),
       ),
-      bottomNavigationBar: null,
+      bottomNavigationBar: const AppBottomNavigation(currentIndex: 0),
     );
   }
 }

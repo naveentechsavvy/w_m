@@ -27,51 +27,52 @@ class MeetupStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ExperienceCard(experience: experience, onTap: onTap),
+        Stack(
+          children: [
+            ExperienceCard(experience: experience, onTap: onTap),
 
-        if (statusLabel != null)
-          Positioned(
-            top: 14,
-            right: 14,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: (statusColor ?? AppColors.primary).withOpacity(0.95),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                statusLabel!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+            if (statusLabel != null)
+              Positioned(
+                top: 14,
+                right: 14,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: (statusColor ?? AppColors.primary).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    statusLabel!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+          ],
+        ),
 
         if (actionLabel != null)
-          Positioned(
-            bottom: 18,
-            right: 18,
-            child: ElevatedButton(
-              onPressed: onActionTap,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                actionLabel!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 4),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: onActionTap,
+                icon: const Icon(Icons.close, size: 16),
+                label: Text(actionLabel!),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red.shade600,
+                  side: BorderSide(color: Colors.red.shade200),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
