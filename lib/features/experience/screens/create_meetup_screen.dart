@@ -3,13 +3,190 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 import '../controllers/experience_controller.dart';
 import '../models/experience_model.dart';
+
+// ===========================
+// Location picker bottom sheet — its own StatefulWidget so it has a
+// real `mounted` check. Prevents "setState() called after dispose()"
+// if the user closes the sheet while a GPS/permission lookup is
+// still in flight. Uses flutter_map (OpenStreetMap tiles) — no API
+// key or billing account required, unlike google_maps_flutter.
+// ===========================
+class _LocationPickerSheet extends StatefulWidget {
+  final LatLng initialPosition;
+  const _LocationPickerSheet({required this.initialPosition});
+
+  @override
+  State<_LocationPickerSheet> createState() => _LocationPickerSheetState();
+}
+
+class _LocationPickerSheetState extends State<_LocationPickerSheet> {
+  late LatLng pickedPosition;
+  final MapController mapController = MapController();
+  bool locating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    pickedPosition = widget.initialPosition;
+  }
+
+  Future<void> useCurrentLocation() async {
+    setState(() => locating = true);
+    try {
+      final permission = await Geolocator.checkPermission();
+      LocationPermission finalPermission = permission;
+      if (permission == LocationPermission.denied) {
+        finalPermission = await Geolocator.requestPermission();
+      }
+      if (finalPermission == LocationPermission.denied ||
+          finalPermission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        Get.snackbar("Location Permission Needed",
+            "Please allow location access to use this feature");
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+      final newPos = LatLng(position.latitude, position.longitude);
+
+      // The sheet may have been closed while we were awaiting the
+      // permission prompt / GPS fix above — never touch state or the
+      // map controller after that.
+      if (!mounted) return;
+
+      setState(() {
+        pickedPosition = newPos;
+      });
+      mapController.move(newPos, mapController.camera.zoom);
+    } catch (e) {
+      if (!mounted) return;
+      Get.snackbar("Location Error", e.toString());
+    } finally {
+      if (mounted) setState(() => locating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                height: 4,
+                width: 40,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+            const Text(
+              "Set Meetup Location",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Tap on the map to drop a pin at the exact spot",
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                height: 260,
+                width: double.infinity,
+                child: FlutterMap(
+                  mapController: mapController,
+                  options: MapOptions(
+                    initialCenter: widget.initialPosition,
+                    initialZoom: 14,
+                    onTap: (tapPosition, point) {
+                      setState(() {
+                        pickedPosition = point;
+                      });
+                    },
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.weekendmasti.app',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: pickedPosition,
+                          width: 40,
+                          height: 40,
+                          child: const Icon(
+                            Icons.location_on,
+                            color: AppColors.primary,
+                            size: 40,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: locating ? null : useCurrentLocation,
+              icon: locating
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location, color: AppColors.primary),
+              label: const Text("Use Current Location"),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context, {
+                  'lat': pickedPosition.latitude,
+                  'lng': pickedPosition.longitude,
+                }),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  "Confirm Location",
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class CreateMeetupScreen extends StatefulWidget {
   const CreateMeetupScreen({super.key});
@@ -35,7 +212,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   Uint8List? bannerBytes;
   bool saving = false;
 
-  // NEW — real coordinates selected on the map
   double? selectedLat;
   double? selectedLng;
 
@@ -91,7 +267,9 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   }
 
   // ===========================
-  // Location picker (bottom sheet) — now a real interactive Google Map
+  // Location picker (bottom sheet) — hosts _LocationPickerSheet, its
+  // own StatefulWidget, so async GPS/permission calls can't crash
+  // after the sheet is closed.
   // ===========================
   Future<void> pickLocation() async {
     LatLng initialPosition = const LatLng(17.3850, 78.4867); // Hyderabad default
@@ -99,137 +277,11 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       initialPosition = LatLng(selectedLat!, selectedLng!);
     }
 
-    LatLng pickedPosition = initialPosition;
-    GoogleMapController? mapController;
-
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            Future<void> useCurrentLocation() async {
-              try {
-                final permission = await Geolocator.checkPermission();
-                LocationPermission finalPermission = permission;
-                if (permission == LocationPermission.denied) {
-                  finalPermission = await Geolocator.requestPermission();
-                }
-                if (finalPermission == LocationPermission.denied ||
-                    finalPermission == LocationPermission.deniedForever) {
-                  Get.snackbar("Location Permission Needed",
-                      "Please allow location access to use this feature");
-                  return;
-                }
-
-                final position = await Geolocator.getCurrentPosition();
-                final newPos = LatLng(position.latitude, position.longitude);
-                setModalState(() {
-                  pickedPosition = newPos;
-                });
-                mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
-              } catch (e) {
-                Get.snackbar("Location Error", e.toString());
-              }
-            }
-
-            return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        height: 4,
-                        width: 40,
-                        margin: const EdgeInsets.only(bottom: 20),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                    const Text(
-                      "Set Meetup Location",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "Tap on the map to drop a pin at the exact spot",
-                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: SizedBox(
-                        height: 260,
-                        width: double.infinity,
-                        child: GoogleMap(
-                          initialCameraPosition: CameraPosition(
-                            target: initialPosition,
-                            zoom: 14,
-                          ),
-                          onMapCreated: (controllerParam) {
-                            mapController = controllerParam;
-                          },
-                          onTap: (tappedPosition) {
-                            setModalState(() {
-                              pickedPosition = tappedPosition;
-                            });
-                          },
-                          markers: {
-                            Marker(
-                              markerId: const MarkerId("selected"),
-                              position: pickedPosition,
-                            ),
-                          },
-                          myLocationButtonEnabled: false,
-                          zoomControlsEnabled: false,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton.icon(
-                      onPressed: useCurrentLocation,
-                      icon: const Icon(Icons.my_location, color: AppColors.primary),
-                      label: const Text("Use Current Location"),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context, {
-                          'lat': pickedPosition.latitude,
-                          'lng': pickedPosition.longitude,
-                        }),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          "Confirm Location",
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+      builder: (context) => _LocationPickerSheet(initialPosition: initialPosition),
     );
 
     if (result != null) {
@@ -238,9 +290,8 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       setState(() {
         selectedLat = lat;
         selectedLng = lng;
-        // No geocoding package yet, so we display coordinates directly.
-        // Add the `geocoding` package later if you want a readable
-        // address like "Banjara Hills, Hyderabad" instead.
+        // No geocoding package here, so we display coordinates
+        // directly instead of a readable address.
         locationController.text = "${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}";
       });
     }
@@ -327,9 +378,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
         saving = false;
       });
 
-      // Navigate to My Meetups (Created tab is index 0 by default)
-      // instead of just popping back, so the user immediately sees
-      // confirmation that the meetup was created.
       Get.offNamed(AppRoutes.myMeetups);
       Get.snackbar(
         "Meetup Created",
@@ -403,7 +451,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             GestureDetector(
               onTap: pickBanner,
               child: Container(

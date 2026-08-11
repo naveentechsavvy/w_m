@@ -33,11 +33,12 @@ dependencies:
   cached_network_image: ^3.4.1
   flutter_svg: ^2.2.0
 
-  # Maps
-  google_maps_flutter: ^2.12.3
+  # Maps — OpenStreetMap via flutter_map, no API key/billing needed
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
   geolocator: ^14.0.2
   geocoding: ^5.0.0
-
+  url_launcher: ^6.3.1
   # Utilities
   intl: ^0.20.2
 

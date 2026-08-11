@@ -6,6 +6,7 @@ import 'firebase_options.dart';
 import 'app/theme/app_theme.dart';
 import 'app/routes/app_pages.dart';
 import 'app/routes/app_routes.dart';
+import 'app/bindings/initial_binding.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,7 @@ class WekendMastiApp extends StatelessWidget {
       title: "Wekend Masti",
       theme: AppTheme.lightTheme,
       initialRoute: AppRoutes.splash,
+      initialBinding: InitialBinding(),
       getPages: AppPages.pages,
     );
   }

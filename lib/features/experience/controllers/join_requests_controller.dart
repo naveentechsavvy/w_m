@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -22,10 +23,17 @@ class JoinRequestsController extends GetxController {
   }
 
   Future<void> loadAll() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      // No signed-in user — nothing to load. Avoids a crash if this
+      // controller is ever constructed during a signed-out state
+      // (e.g. a stale route hit right after logout).
+      requests.clear();
+      return;
+    }
+
     isLoading.value = true;
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-
       // Outgoing: requests I sent to join other people's meetups
       final outgoing = await repository.getMyRequests();
 
@@ -57,9 +65,28 @@ class JoinRequestsController extends GetxController {
           r.meetup.id == meetupId)
       .toList();
 
+  /// Approves a request. The datasource does this as a single atomic
+  /// transaction (status flip + participants + joined count), and can
+  /// throw a [StateError] — e.g. if the meetup filled up between the
+  /// organizer opening the screen and tapping Approve. That error is
+  /// caught here and surfaced via snackbar rather than left to crash
+  /// the tap handler silently.
   Future<void> approve(String requestId) async {
-    await repository.approve(requestId);
-    await loadAll();
+    try {
+      await repository.approve(requestId);
+      await loadAll();
+    } catch (e) {
+      Get.snackbar(
+        "Couldn't approve",
+        e is StateError ? e.message : "Something went wrong. Please try again.",
+        backgroundColor: Colors.red.shade400,
+        colorText: Colors.white,
+      );
+      // Refresh anyway — another organizer/session may have changed
+      // state (e.g. the meetup filled up), so the list should reflect
+      // the current truth even though this approval failed.
+      await loadAll();
+    }
   }
 
   Future<void> reject(String requestId) async {

@@ -26,8 +26,75 @@ class JoinRequestDataSource {
     });
   }
 
-  Future<void> approve(String requestId) =>
-      _col.doc(requestId).update({'status': 'approved'});
+  /// Approves a join request AND adds the requester to the meetup's
+  /// `participants` array + increments `joined`, atomically.
+  ///
+  /// This has to be a single transaction, not two separate writes:
+  /// - If the app crashed between "flip status" and "add participant",
+  ///   you'd get a request marked "approved" with no matching
+  ///   participant — the requester would be approved but still locked
+  ///   out of the group chat, and the joined/seats counter would be
+  ///   permanently wrong with no error anywhere to explain why.
+  /// - Reading + checking status/capacity inside the transaction (rather
+  ///   than before it) protects against two concurrent approvals (e.g.
+  ///   a double-tap, or two organizer sessions) double-counting the
+  ///   same requester or approving past capacity.
+  ///
+  /// Throws a [StateError] if the meetup is already full. Callers
+  /// (JoinRequestsController) should catch this and surface it to the
+  /// organizer rather than letting it fail silently.
+  Future<void> approve(String requestId) async {
+    final requestRef = _col.doc(requestId);
+
+    await FirebaseFirestore.instance.runTransaction((txn) async {
+      final requestSnap = await txn.get(requestRef);
+      if (!requestSnap.exists) {
+        throw StateError('Join request not found.');
+      }
+
+      final requestData = requestSnap.data()!;
+      final currentStatus = requestData['status'] as String?;
+
+      // Already handled (approved/rejected/cancelled) — do nothing.
+      // Prevents double-increment if approve() is triggered twice for
+      // the same request (double-tap, retry after a slow network, or
+      // a race between two organizer sessions).
+      if (currentStatus != 'pending') return;
+
+      final meetupId = requestData['meetupId'] as String;
+      final requesterId = requestData['requesterId'] as String;
+      final meetupRef = _experienceDataSource.meetupDocRef(meetupId);
+
+      final meetupSnap = await txn.get(meetupRef);
+      if (!meetupSnap.exists) {
+        throw StateError('This meetup no longer exists.');
+      }
+
+      final meetupData = meetupSnap.data()!;
+      final int seats = (meetupData['seats'] ?? 0) as int;
+      final int joined = (meetupData['joined'] ?? 0) as int;
+      final List participants =
+          List.from(meetupData['participants'] ?? const []);
+
+      if (participants.contains(requesterId)) {
+        // Already a participant somehow (e.g. re-approving after a
+        // previous partial failure) — just settle the status, don't
+        // double add or double increment.
+        txn.update(requestRef, {'status': 'approved'});
+        return;
+      }
+
+      if (joined >= seats) {
+        throw StateError('This meetup is already full.');
+      }
+
+      txn.update(requestRef, {'status': 'approved'});
+      txn.update(meetupRef, {
+        'participants': FieldValue.arrayUnion([requesterId]),
+        'joined': joined + 1,
+      });
+    });
+  }
 
   Future<void> reject(String requestId) =>
       _col.doc(requestId).update({'status': 'rejected'});

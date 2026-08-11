@@ -1,12 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../core/services/location_service.dart';
 import '../models/experience_model.dart';
 import '../repositories/experience_repository.dart';
 import 'my_meetups_controller.dart';
 
 class ExperienceController extends GetxController {
   final ExperienceRepository repository = ExperienceRepository();
+  final LocationService locationService = LocationService();
 
   RxList<Experience> experiences = <Experience>[].obs;
   RxString selectedCategory = "All".obs;
@@ -22,10 +25,21 @@ class ExperienceController extends GetxController {
     "Food",
   ].obs;
 
+  // ===========================
+  // Location state (for Nearby + Home greeting chip)
+  // ===========================
+  Rx<Position?> currentPosition = Rx<Position?>(null);
+  RxString currentLocationLabel = "Set your location".obs;
+  RxBool locationLoading = false.obs;
+
+  /// Meetups within this radius count as "nearby". Adjust as needed.
+  static const double _nearbyRadiusKm = 15.0;
+
   @override
   void onInit() {
     super.onInit();
     loadMeetups();
+    refreshLocation();
   }
 
   Future<void> loadMeetups() async {
@@ -38,6 +52,42 @@ class ExperienceController extends GetxController {
     }
   }
 
+  /// Fetches current GPS position + a readable label. Safe to call
+  /// again any time the user taps "change location" — doesn't throw
+  /// if permission is denied, it just leaves the old state in place.
+  Future<void> refreshLocation() async {
+    locationLoading.value = true;
+    try {
+      final position = await locationService.getCurrentPosition();
+      if (position == null) {
+        currentLocationLabel.value = "Enable location";
+        return;
+      }
+      currentPosition.value = position;
+
+      final label = await locationService.getReadableAddress(
+        position.latitude,
+        position.longitude,
+      );
+      currentLocationLabel.value = label ?? "Current location";
+    } finally {
+      locationLoading.value = false;
+    }
+  }
+
+  /// Distance in km from the user's current position to an experience.
+  /// Returns null if we don't have a GPS fix yet.
+  double? distanceToKm(Experience e) {
+    final pos = currentPosition.value;
+    if (pos == null) return null;
+    return locationService.distanceInKm(
+      pos.latitude,
+      pos.longitude,
+      e.latitude,
+      e.longitude,
+    );
+  }
+
   // ===========================
   // Category filtering
   // ===========================
@@ -45,11 +95,13 @@ class ExperienceController extends GetxController {
     selectedCategory.value = category;
   }
 
+  List<Experience> get _upcoming =>
+      experiences.where((e) => e.date.isAfter(DateTime.now())).toList();
+
   List<Experience> get _filteredByCategory {
-    if (selectedCategory.value == "All") return experiences;
-    return experiences
-        .where((e) => e.category == selectedCategory.value)
-        .toList();
+    final base = _upcoming;
+    if (selectedCategory.value == "All") return base;
+    return base.where((e) => e.category == selectedCategory.value).toList();
   }
 
   // ===========================
@@ -83,6 +135,8 @@ class ExperienceController extends GetxController {
       participants: newExperience.participants,
       gallery: newExperience.gallery,
       createdBy: uid,
+      latitude: newExperience.latitude,
+      longitude: newExperience.longitude,
     );
 
     debugPrint("[ExperienceController] calling repository.createMeetup()...");
@@ -91,8 +145,6 @@ class ExperienceController extends GetxController {
 
     experiences.insert(0, Experience.fromMap(newId, withCreator.toMap()));
 
-    // Force My Meetups to refresh if it's already loaded in memory,
-    // since its onInit() only runs once and won't pick this up otherwise.
     if (Get.isRegistered<MyMeetupsController>()) {
       debugPrint(
           "[ExperienceController] MyMeetupsController is registered, refreshing...");
@@ -117,9 +169,24 @@ class ExperienceController extends GetxController {
   // Section getters
   // ===========================
   List<Experience> get trending => _filteredByCategory;
-  List<Experience> get nearby => _filteredByCategory
-      .where((e) => e.location == "Hyderabad" || e.location == "Gachibowli")
-      .toList();
+
+  /// GPS-based: meetups within `_nearbyRadiusKm`, sorted closest-first.
+  /// Falls back to the full filtered list if we don't have a GPS fix
+  /// yet (e.g. permission not granted), so the section isn't empty
+  /// while location is loading.
+  List<Experience> get nearby {
+    final pos = currentPosition.value;
+    if (pos == null) return _filteredByCategory;
+
+    final withDistance = _filteredByCategory
+        .map((e) => MapEntry(e, distanceToKm(e) ?? double.infinity))
+        .where((entry) => entry.value <= _nearbyRadiusKm)
+        .toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
+    return withDistance.map((entry) => entry.key).toList();
+  }
+
   List<Experience> get recommended =>
       _filteredByCategory.where((e) => e.foodAvailable == true).toList();
 }

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../controllers/experience_controller.dart';
 import '../controllers/join_requests_controller.dart';
 import '../models/experience_model.dart';
 import '../models/join_request_model.dart';
@@ -9,12 +13,32 @@ import '../models/join_request_model.dart';
 class ExpDetailsScreen extends StatelessWidget {
   const ExpDetailsScreen({super.key});
 
+  Future<void> _openDirections(double lat, double lng) async {
+    final uri = Uri.parse(
+      "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng",
+    );
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      Get.snackbar(
+        "Couldn't open Maps",
+        "Please check if Google Maps is installed.",
+        backgroundColor: AppColors.primary,
+        colorText: Colors.white,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Experience experience = Get.arguments as Experience;
     final joinRequestsController = Get.find<JoinRequestsController>();
+    final experienceController = Get.find<ExperienceController>();
 
     final bool isMine = experience.organizerName == "You";
+    final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final bool isParticipant = experience.participants.contains(currentUid);
+    final bool canOpenChat = isMine || isParticipant;
+    final bool hasCoordinates =
+        experience.latitude != 0.0 && experience.longitude != 0.0;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -55,25 +79,76 @@ class ExpDetailsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      experience.title,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            experience.title,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (canOpenChat)
+                          IconButton(
+                            tooltip: "Group Chat",
+                            onPressed: () => Get.toNamed(
+                              AppRoutes.chat,
+                              arguments: {
+                                'meetupId': experience.id,
+                                'meetupTitle': experience.title,
+                              },
+                            ),
+                            icon: const Icon(
+                              Icons.chat_bubble_outline,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
 
+                    // Location row — now shows distance (when GPS is
+                    // available) and a "Get Directions" button (when
+                    // the meetup has coordinates saved).
                     Row(
                       children: [
                         const Icon(Icons.location_on_outlined,
                             size: 18, color: AppColors.primary),
                         const SizedBox(width: 6),
-                        Text(
-                          experience.location,
-                          style: const TextStyle(color: AppColors.textSecondary),
+                        Expanded(
+                          child: Text(
+                            experience.location,
+                            style: const TextStyle(color: AppColors.textSecondary),
+                          ),
                         ),
+                        Obx(() {
+                          final km = experienceController.distanceToKm(experience);
+                          if (km == null) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Text(
+                              "${km.toStringAsFixed(1)} km away",
+                              style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        }),
+                        if (hasCoordinates)
+                          IconButton(
+                            tooltip: "Get Directions",
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _openDirections(
+                                experience.latitude, experience.longitude),
+                            icon: const Icon(Icons.directions_outlined,
+                                color: AppColors.primary),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 8),
