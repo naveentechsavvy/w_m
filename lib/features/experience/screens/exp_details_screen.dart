@@ -33,8 +33,16 @@ class ExpDetailsScreen extends StatelessWidget {
     final joinRequestsController = Get.find<JoinRequestsController>();
     final experienceController = Get.find<ExperienceController>();
 
-    final bool isMine = experience.organizerName == "You";
     final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    // FIX: previously compared experience.organizerName == "You", which
+    // is a display-label default, not an identity check. Every viewer
+    // saw isMine == true whenever organizerName happened to be "You",
+    // which hid the Join button for everyone, not just the real owner.
+    // createdBy stores the actual creator's uid, so compare against that.
+    final bool isMine = experience.createdBy.isNotEmpty &&
+        experience.createdBy == currentUid;
+
     final bool isParticipant = experience.participants.contains(currentUid);
     final bool canOpenChat = isMine || isParticipant;
     final bool hasCoordinates =
@@ -111,7 +119,7 @@ class ExpDetailsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
 
-                    // Location row — now shows distance (when GPS is
+                    // Location row — shows distance (when GPS is
                     // available) and a "Get Directions" button (when
                     // the meetup has coordinates saved).
                     Row(
@@ -237,14 +245,49 @@ class ExpDetailsScreen extends StatelessWidget {
                       Obx(() {
                         final existing =
                             joinRequestsController.myRequestFor(experience.id);
-                        final requested = joinRequestsController
-                            .hasRequested(experience.id);
+                        final status = existing?.status;
+
+                        // FIX: previously only handled pending vs
+                        // not-requested. Now covers all 4 states so the
+                        // requester sees the real status of their request.
+                        final bool isPending =
+                            status == JoinRequestStatus.pending;
+                        final bool isApproved =
+                            status == JoinRequestStatus.approved ||
+                                isParticipant;
+                        final bool isRejected =
+                            status == JoinRequestStatus.rejected;
+
+                        // Only these states block re-tapping. A rejected
+                        // or cancelled request should allow requesting again
+                        // if you want retry to be possible — currently
+                        // rejected is shown as a final disabled state per
+                        // your requirement ("should show rejected").
+                        final bool disabled =
+                            isPending || isApproved || isRejected;
+
+                        String label;
+                        Color bgColor;
+
+                        if (isApproved) {
+                          label = "Joined";
+                          bgColor = AppColors.textLight;
+                        } else if (isPending) {
+                          label = "Request Pending";
+                          bgColor = AppColors.textLight;
+                        } else if (isRejected) {
+                          label = "Rejected";
+                          bgColor = Colors.red.shade300;
+                        } else {
+                          label = "Request to Join";
+                          bgColor = AppColors.primary;
+                        }
 
                         return SizedBox(
                           width: double.infinity,
                           height: 54,
                           child: ElevatedButton(
-                            onPressed: requested
+                            onPressed: disabled
                                 ? null
                                 : () async {
                                     await joinRequestsController
@@ -257,20 +300,13 @@ class ExpDetailsScreen extends StatelessWidget {
                                     );
                                   },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: requested
-                                  ? AppColors.textLight
-                                  : AppColors.primary,
+                              backgroundColor: bgColor,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
                             child: Text(
-                              requested
-                                  ? (existing?.status ==
-                                          JoinRequestStatus.pending
-                                      ? "Request Pending"
-                                      : "Requested")
-                                  : "Request to Join",
+                              label,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,

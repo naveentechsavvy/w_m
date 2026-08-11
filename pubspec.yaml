@@ -39,6 +39,11 @@ dependencies:
   geolocator: ^14.0.2
   geocoding: ^5.0.0
   url_launcher: ^6.3.1
+
+  # Voice Search
+  speech_to_text: ^7.0.0
+  permission_handler: ^11.3.1
+
   # Utilities
   intl: ^0.20.2
 

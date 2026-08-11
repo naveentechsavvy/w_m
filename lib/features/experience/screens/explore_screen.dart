@@ -4,7 +4,6 @@ import 'package:get/get.dart';
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 import '../controllers/experience_controller.dart';
-import '../widgets/home_search_bar.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/experience_card.dart';
 import '../widgets/bottom_navigation.dart';
@@ -27,51 +26,26 @@ class ExploreScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        "👋 Good Evening",
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      SizedBox(height: 5),
-                      Text(
-                        "Naveen",
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    "👋 Good Evening",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.groups_outlined, size: 26),
-                        color: AppColors.textPrimary,
-                        tooltip: "My Meetups",
-                        onPressed: () => Get.toNamed(AppRoutes.myMeetups),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.notifications_none, size: 28),
-                        color: AppColors.textPrimary,
-                        tooltip: "Notifications",
-                        onPressed: () => Get.toNamed(AppRoutes.notifications),
-                      ),
-                    ],
+                  SizedBox(height: 5),
+                  Text(
+                    "Naveen",
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 25),
-
-              const HomeSearchBar(),
 
               const SizedBox(height: 25),
 

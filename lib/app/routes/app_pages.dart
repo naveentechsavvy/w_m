@@ -9,12 +9,13 @@ import '../../features/home/screens/choice_screen.dart';
 import '../../features/experience/screens/explore_screen.dart';
 import '../../features/experience/screens/exp_details_screen.dart';
 import '../../features/experience/screens/profile_view_screen.dart';
-import '../../features/home/home_placeholder_screen.dart';
+import '../../features/home/screens/home_screen.dart';
 import '../../features/experience/screens/create_meetup_screen.dart';
 import '../../features/experience/screens/my_meetups_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/chat/screens/chat_screen.dart';
 import '../../features/chat/bindings/chat_binding.dart';
+import '../../features/experience/bindings/experience_details_binding.dart';
 
 class AppPages {
   static final pages = [
@@ -49,10 +50,11 @@ class AppPages {
     GetPage(
       name: AppRoutes.experienceDetails,
       page: () => const ExpDetailsScreen(),
+      binding: ExperienceDetailsBinding(),
     ),
     GetPage(
       name: AppRoutes.home,
-      page: () => const HomePlaceholderScreen(),
+      page: () => const HomeScreen(),
     ),
     GetPage(
       name: AppRoutes.editProfile,

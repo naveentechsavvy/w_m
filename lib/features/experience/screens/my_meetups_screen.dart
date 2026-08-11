@@ -51,7 +51,7 @@ class MyMeetupsScreen extends StatelessWidget {
         body: Obx(
           () => TabBarView(
             children: [
-              _createdTab(controller),
+              _createdTab(context, controller),
               _requestListTab(
                 controller.joined,
                 emptyText: "You haven't joined any meetups yet.",
@@ -76,7 +76,7 @@ class MyMeetupsScreen extends StatelessWidget {
     );
   }
 
-  Widget _createdTab(MyMeetupsController controller) {
+  Widget _createdTab(BuildContext context, MyMeetupsController controller) {
     if (controller.created.isEmpty) {
       return _emptyState("You haven't created any meetups yet.");
     }
@@ -87,14 +87,49 @@ class MyMeetupsScreen extends StatelessWidget {
       itemBuilder: (context, index) {
         final meetup = controller.created[index];
         final pendingCount = controller.pendingRequestCountFor(meetup.id);
+        final canCancel = meetup.joined == 0;
 
         return MeetupStatusCard(
           experience: meetup,
           statusLabel: pendingCount > 0 ? "$pendingCount Pending" : null,
           statusColor: AppColors.warning,
+          actionLabel: canCancel ? "Cancel" : null,
+          onActionTap: canCancel
+              ? () => _confirmCancel(context, controller, meetup.id)
+              : null,
         );
       },
     );
+  }
+
+  Future<void> _confirmCancel(
+    BuildContext context,
+    MyMeetupsController controller,
+    String meetupId,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Cancel this meetup?"),
+        content: const Text(
+          "This will permanently remove the meetup. This can't be undone.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text("No"),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            child: const Text("Yes, Cancel"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await controller.cancelMeetup(meetupId);
+    }
   }
 
   Widget _requestListTab(

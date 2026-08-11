@@ -32,4 +32,13 @@ class ExperienceDataSource {
     if (!doc.exists) return null;
     return Experience.fromDoc(doc);
   }
+
+  /// Deletes a meetup doc outright. Only meant to be called for a
+  /// meetup with zero joined participants (see cancelMeetup in the
+  /// repository/controller for the guard) — for a meetup that already
+  /// has participants, a soft "cancelled" status should be used instead
+  /// so their join history isn't wiped. Not needed yet per current scope.
+  Future<void> deleteMeetup(String id) async {
+    await _col.doc(id).delete();
+  }
 }

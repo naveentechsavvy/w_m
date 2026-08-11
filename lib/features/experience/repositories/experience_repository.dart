@@ -14,4 +14,6 @@ class ExperienceRepository {
 
   Future<Experience?> getMeetupById(String id) =>
       datasource.getMeetupById(id);
+
+  Future<void> cancelMeetup(String id) => datasource.deleteMeetup(id);
 }

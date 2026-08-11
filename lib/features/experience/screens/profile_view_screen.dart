@@ -9,7 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
-import '../../experience/widgets/bottom_navigation.dart';
 
 class ProfileViewScreen extends StatefulWidget {
   const ProfileViewScreen({super.key});
@@ -1449,12 +1448,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
       // BOTTOM NAVIGATION
       // ----------------------------------------------------------
 
-      bottomNavigationBar:
-          isEditing
-              ? null
-              : const AppBottomNavigation(
-                  currentIndex: 2,
-                ),
+      bottomNavigationBar: null,
     );
   }
 }
