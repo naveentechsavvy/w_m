@@ -56,7 +56,7 @@ class AuthController extends GetxController {
       );
       loading.value = false;
 
-      Get.offAllNamed(AppRoutes.home);
+      Get.offAllNamed(AppRoutes.choice);
     } catch (_) {
       loading.value = false;
       Get.snackbar("Invalid OTP", "Please try again");

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../controllers/subscription_controller.dart';
 import '../controllers/experience_controller.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/experience_card.dart';
@@ -14,6 +15,9 @@ class ExploreScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.put(ExperienceController());
+    final subscriptionController = Get.isRegistered<SubscriptionController>()
+        ? Get.find<SubscriptionController>()
+        : Get.put(SubscriptionController(), permanent: true);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -139,15 +143,24 @@ class ExploreScreen extends StatelessWidget {
       ),
 
       bottomNavigationBar: const AppBottomNavigation(currentIndex: 1),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.primary,
-        onPressed: () => Get.toNamed(AppRoutes.createExperience),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          "Create",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-      ),
+      floatingActionButton: Obx(() {
+        // Only premium members see the Create button here. Free members
+        // can still explore and request to join — the upgrade prompt now
+        // lives on the Home screen instead of cluttering Explore.
+        if (!subscriptionController.isPremium.value) {
+          return const SizedBox.shrink();
+        }
+
+        return FloatingActionButton.extended(
+          backgroundColor: AppColors.primary,
+          onPressed: () => Get.toNamed(AppRoutes.createExperience),
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text(
+            "Create",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        );
+      }),
     );
   }
 }

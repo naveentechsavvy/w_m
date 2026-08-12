@@ -44,6 +44,9 @@ dependencies:
   speech_to_text: ^7.0.0
   permission_handler: ^11.3.1
 
+  # Payments
+  razorpay_flutter: ^1.4.0
+
   # Utilities
   intl: ^0.20.2
 

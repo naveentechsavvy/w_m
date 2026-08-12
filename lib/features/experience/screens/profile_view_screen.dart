@@ -1224,6 +1224,19 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
               // --------------------------------------------------
               // ONLY ONE EDIT BUTTON
+              //
+              // FIX: Material 3's ElevatedButton enforces its own
+              // internal padding + a 48dp minimum tap target height
+              // regardless of the outer SizedBox constraint. That
+              // was fighting the fixed height:44 box below, pushing
+              // the "EDIT" label out of the button's clipped bounds
+              // and rendering it visually cut off at the top.
+              //
+              // padding: EdgeInsets.zero + minimumSize: Size.zero +
+              // tapTargetSize: shrinkWrap + visualDensity: compact
+              // together remove those default constraints so the
+              // button truly respects the SizedBox size and the
+              // label centers correctly.
               // --------------------------------------------------
 
               SizedBox(
@@ -1245,6 +1258,8 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                         TextStyle(
                       fontWeight:
                           FontWeight.w700,
+                      fontSize: 14,
+                      height: 1.0,
                     ),
                   ),
                   style:
@@ -1254,6 +1269,15 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                     foregroundColor:
                         AppColors.primary,
                     elevation: 0,
+                    padding:
+                        EdgeInsets.zero,
+                    minimumSize:
+                        Size.zero,
+                    tapTargetSize:
+                        MaterialTapTargetSize
+                            .shrinkWrap,
+                    visualDensity:
+                        VisualDensity.compact,
                     shape:
                         RoundedRectangleBorder(
                       borderRadius:
@@ -1450,5 +1474,5 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
       bottomNavigationBar: null,
     );
-  }
+  } 
 }

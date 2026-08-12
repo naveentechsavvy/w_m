@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../experience/datasources/experience_datasource.dart';
 import '../models/review_model.dart';
@@ -33,19 +34,35 @@ class ReviewDataSource {
   ) async {
     final urls = <String>[];
     for (var i = 0; i < photos.length; i++) {
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('review_photos/$meetupId/${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
+      final ref = FirebaseStorage.instance.ref().child(
+          'review_photos/$meetupId/${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
       await ref.putData(photos[i], SettableMetadata(contentType: 'image/jpeg'));
       urls.add(await ref.getDownloadURL());
     }
     return urls;
   }
 
+  /// Writes the review document. This is the operation that actually
+  /// matters for "did the submission succeed" — everything after this
+  /// (aggregate recalculation) is best-effort and must never cause a
+  /// successfully-written review to be reported back to the user as a
+  /// failed submission.
   Future<void> submitReview(Review review) async {
     final docRef = _col.doc();
     await docRef.set(review.toMap());
-    await _recalculateAggregate(review.meetupId);
+
+    // Aggregate recalculation is isolated in its own try/catch so a
+    // permission error or missing index here (e.g. a reviewer not
+    // having write access to the meetup doc's avgRating/reviewCount
+    // fields under current Firestore rules) can never bubble up and
+    // make submitReview() throw after the review was already saved.
+    try {
+      await _recalculateAggregate(review.meetupId);
+    } catch (e) {
+      debugPrint(
+        "[ReviewDataSource] Aggregate recalculation failed (review was still saved): $e",
+      );
+    }
   }
 
   /// Recomputes avgRating/reviewCount for a meetup from its reviews and
@@ -56,7 +73,10 @@ class ReviewDataSource {
     final count = snap.docs.length;
     final avg = count == 0
         ? 0.0
-        : snap.docs.map((d) => (d.data()['rating'] ?? 0).toDouble()).reduce((a, b) => a + b) / count;
+        : snap.docs
+                .map((d) => (d.data()['rating'] ?? 0).toDouble())
+                .reduce((a, b) => a + b) /
+            count;
 
     await _experienceDataSource.meetupDocRef(meetupId).update({
       'avgRating': avg,

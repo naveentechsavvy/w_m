@@ -6,6 +6,7 @@ import '../../../app/theme/colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../experience/controllers/home_controller.dart';
+import '../../experience/controllers/subscription_controller.dart';
 import '../../experience/widgets/bottom_navigation.dart';
 import '../../experience/widgets/home_search_bar.dart';
 import '../../experience/widgets/upcoming_meetup_card.dart';
@@ -16,6 +17,9 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.put(HomeController());
+    final subscriptionController = Get.isRegistered<SubscriptionController>()
+        ? Get.find<SubscriptionController>()
+        : Get.put(SubscriptionController(), permanent: true);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -75,6 +79,73 @@ class HomeScreen extends StatelessWidget {
                     style: AppTextStyles.heading3,
                   ),
                   const SizedBox(height: AppSizes.lg),
+
+                  // Premium upgrade banner — only shown to free members.
+                  // Replaces the old "Upgrade to Premium" FAB on Explore.
+                  Obx(() {
+                    if (subscriptionController.isPremium.value) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: AppSizes.lg),
+                      child: GestureDetector(
+                        onTap: () => Get.toNamed(AppRoutes.premiumPlan),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.primary,
+                                AppColors.primary.withOpacity(0.75),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(AppSizes.radiusMedium),
+                          ),
+                          child: Row(
+                            children: [
+                              const Text(
+                                "👑",
+                                style: TextStyle(fontSize: 30),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      "Go Premium",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      "Create your own meetups and invite others",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.arrow_forward_ios,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+
                   const Text("My Upcoming Meetup", style: AppTextStyles.heading3),
                   const SizedBox(height: AppSizes.sm),
                   controller.upcomingMeetup == null
@@ -115,3 +186,4 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
+

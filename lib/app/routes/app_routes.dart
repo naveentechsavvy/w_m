@@ -22,4 +22,6 @@ abstract class AppRoutes {
 
   static const reviews = '/reviews';
   static const writeReview = '/write-review';
+
+  static const premiumPlan = '/premium-plan';
 }

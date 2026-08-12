@@ -18,6 +18,7 @@ import '../../features/chat/bindings/chat_binding.dart';
 import '../../features/experience/bindings/experience_details_binding.dart';
 import '../../features/reviews/screens/reviews_screen.dart';
 import '../../features/reviews/screens/write_review_screen.dart';
+import '../../features/experience/screens/premium_plan_screen.dart';
 
 class AppPages {
   static final pages = [
@@ -86,6 +87,10 @@ class AppPages {
     GetPage(
       name: AppRoutes.writeReview,
       page: () => const WriteReviewScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.premiumPlan,
+      page: () => const PremiumPlanScreen(),
     ),
   ];
 }
