@@ -35,6 +35,13 @@ import '../repositories/chat_repository.dart';
 class ChatController extends GetxController {
   final ChatRepository repository = ChatRepository();
 
+  /// Own messages can be edited/deleted only within this window of
+  /// sending — matches the common WhatsApp-style edit-window pattern.
+  /// Same window applies to both actions for simplicity; split them into
+  /// separate durations later if edit and delete ever need different
+  /// limits.
+  static const Duration _editWindow = Duration(minutes: 15);
+
   /// Computes the same roomId the controller will use internally, from
   /// raw route arguments + the current uid. Exposed as a static method so
   /// chat_binding.dart can compute an identical tag BEFORE the controller
@@ -74,6 +81,12 @@ class ChatController extends GetxController {
   final RxBool isSending = false.obs;
   final RxBool isReady = false.obs;
   final TextEditingController textController = TextEditingController();
+
+  /// Null when composing a new message. Set when the user long-presses
+  /// one of their own messages and taps Edit — send() branches on this
+  /// to call editMessage() instead of sendMessage(), and the input bar
+  /// shows an "Editing message" strip above the text field while set.
+  final Rxn<Message> editingMessage = Rxn<Message>();
 
   StreamSubscription<List<Message>>? _sub;
   String _senderName = 'You';
@@ -175,6 +188,37 @@ class ChatController extends GetxController {
     super.onClose();
   }
 
+  /// True if [message] belongs to the current user, hasn't already been
+  /// deleted, and is still inside the edit/delete window. Drives both
+  /// whether the long-press menu offers Edit/Delete and whether the
+  /// controller methods below will actually perform the write.
+  bool canEditOrDelete(Message message) {
+    if (message.senderId != currentUid) return false;
+    if (message.isDeleted) return false;
+    return DateTime.now().difference(message.sentAt) <= _editWindow;
+  }
+
+  /// Enters edit mode for [message]: preloads its text into the input
+  /// field and stores it so send() knows to update instead of create.
+  void startEdit(Message message) {
+    if (!canEditOrDelete(message)) return;
+    editingMessage.value = message;
+    textController.text = message.text;
+    textController.selection = TextSelection.fromPosition(
+      TextPosition(offset: textController.text.length),
+    );
+  }
+
+  /// Exits edit mode without saving changes.
+  void cancelEdit() {
+    editingMessage.value = null;
+    textController.clear();
+  }
+
+  /// Sends a new message, or — if editingMessage is set — saves an edit
+  /// to that message instead. Kept as a single entry point (rather than
+  /// two separate button handlers) so the input bar's send button always
+  /// does "the right thing" regardless of mode.
   Future<void> send() async {
     final text = textController.text.trim();
     if (text.isEmpty) return;
@@ -186,6 +230,12 @@ class ChatController extends GetxController {
         'Please sign in again to send messages.',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return;
+    }
+
+    final editing = editingMessage.value;
+    if (editing != null) {
+      await _saveEdit(editing, text);
       return;
     }
 
@@ -208,6 +258,62 @@ class ChatController extends GetxController {
       );
     } finally {
       isSending.value = false;
+    }
+  }
+
+  Future<void> _saveEdit(Message original, String newText) async {
+    if (!canEditOrDelete(original)) {
+      Get.snackbar(
+        'Can\'t edit this message',
+        'The edit window for this message has passed.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      cancelEdit();
+      return;
+    }
+
+    isSending.value = true;
+    try {
+      await repository.editMessage(messageId: original.id, newText: newText);
+      cancelEdit();
+    } catch (e) {
+      debugPrint('Edit message error: $e');
+      Get.snackbar(
+        'Edit not saved',
+        'Please check your connection and try again.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isSending.value = false;
+    }
+  }
+
+  Future<void> deleteMessage(Message message) async {
+    if (!canEditOrDelete(message)) {
+      Get.snackbar(
+        'Can\'t delete this message',
+        'The delete window for this message has passed.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
+    // If the message being deleted is the one currently being edited,
+    // exit edit mode first so the input bar doesn't stay pointed at a
+    // message that's about to disappear.
+    if (editingMessage.value?.id == message.id) {
+      cancelEdit();
+    }
+
+    try {
+      await repository.deleteMessage(message.id);
+    } catch (e) {
+      debugPrint('Delete message error: $e');
+      Get.snackbar(
+        'Delete failed',
+        'Please check your connection and try again.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
     }
   }
 }

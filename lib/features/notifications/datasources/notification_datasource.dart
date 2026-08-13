@@ -6,6 +6,32 @@ class NotificationDataSource {
   final CollectionReference<Map<String, dynamic>> _collection =
       FirebaseFirestore.instance.collection('notifications');
 
+  /// Creates a new notification doc for [userId] (the recipient).
+  /// Used by join-request approve/reject right now; any future
+  /// notification-producing action (meetup reminder, announcement, new
+  /// message) should call this same method rather than writing to the
+  /// `notifications` collection directly, to keep the doc shape
+  /// consistent everywhere.
+  Future<void> create({
+    required String userId,
+    required NotificationType type,
+    required String title,
+    required String body,
+    String? relatedId,
+  }) async {
+    final notification = AppNotification(
+      id: '',
+      type: type,
+      title: title,
+      body: body,
+      createdAt: DateTime.now(),
+      isRead: false,
+      userId: userId,
+      relatedId: relatedId,
+    );
+    await _collection.add(notification.toMap());
+  }
+
   Future<List<AppNotification>> getForUser(String uid) async {
     final snapshot = await _collection
         .where('userId', isEqualTo: uid)

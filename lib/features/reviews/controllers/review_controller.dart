@@ -54,7 +54,13 @@ class ReviewController extends GetxController {
       if (uid != null) {
         alreadyReviewed.value = await repository.hasUserReviewed(meetupId, uid);
       }
-    } catch (_) {
+    } catch (e) {
+      // If this prints a Firestore error containing a URL like
+      // ".../firestore/indexes?create_composite=...", open that link
+      // and create the composite index it asks for (meetupId + createdAt).
+      // Reviews are being written successfully; they just can't be
+      // queried back until that index exists.
+      debugPrint("[ReviewController] loadReviews failed: $e");
       hasError.value = true;
     } finally {
       isLoading.value = false;
@@ -125,9 +131,22 @@ class ReviewController extends GetxController {
         createdAt: DateTime.now(),
       );
 
+      // This write is what actually matters for "did the submission
+      // succeed" — if it throws, we fall through to the catch below
+      // and correctly report failure to the user.
       await repository.submitReview(review);
       alreadyReviewed.value = true;
-      await loadReviews();
+
+      // The review is already saved at this point. A failure to
+      // refresh the list (e.g. a missing Firestore composite index)
+      // must never be reported to the user as a failed submission —
+      // it's isolated in its own try/catch so it can't reach the
+      // outer catch and flip a successful submit into "Submission Failed".
+      try {
+        await loadReviews();
+      } catch (e) {
+        debugPrint("[ReviewController] post-submit refresh failed: $e");
+      }
 
       Get.snackbar("Review Submitted", "Thanks for sharing your experience!");
       return true;

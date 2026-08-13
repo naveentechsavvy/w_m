@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../../core/constants/app_text_styles.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -101,10 +102,10 @@ class _SplashScreenState extends State<SplashScreen>
 
               Text(
                 "Weekend Masti",
-                style: TextStyle(
+                style: AppTextStyles.heading1.copyWith(
                   fontSize: 34,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
                 ),
               ),
 
@@ -112,9 +113,9 @@ class _SplashScreenState extends State<SplashScreen>
 
               Text(
                 "Every Weekend Deserves a Story",
-                style: TextStyle(
+                style: AppTextStyles.body.copyWith(
                   fontSize: 16,
-                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
 

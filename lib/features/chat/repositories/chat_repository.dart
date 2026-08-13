@@ -35,4 +35,13 @@ class ChatRepository {
         senderName: senderName,
         text: text,
       );
+
+  Future<void> editMessage({
+    required String messageId,
+    required String newText,
+  }) =>
+      datasource.editMessage(messageId: messageId, newText: newText);
+
+  Future<void> deleteMessage(String messageId) =>
+      datasource.deleteMessage(messageId);
 }

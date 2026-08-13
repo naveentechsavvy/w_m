@@ -38,25 +38,35 @@ class HomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.groups_outlined, size: 26),
+                        icon: const Icon(Icons.arrow_back_ios_new, size: 22),
                         color: AppColors.textPrimary,
-                        tooltip: "My Meetups",
-                        onPressed: () => Get.toNamed(AppRoutes.myMeetups),
+                        tooltip: "Back to Choice",
+                        onPressed: () => Get.offNamed(AppRoutes.choice),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.notifications_none, size: 26),
-                        color: AppColors.textPrimary,
-                        tooltip: "Notifications",
-                        onPressed: () => Get.toNamed(AppRoutes.notifications),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.account_circle_outlined, size: 26),
-                        color: AppColors.textPrimary,
-                        tooltip: "Profile",
-                        onPressed: () => Get.toNamed(AppRoutes.profile),
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.groups_outlined, size: 26),
+                            color: AppColors.textPrimary,
+                            tooltip: "My Meetups",
+                            onPressed: () => Get.toNamed(AppRoutes.myMeetups),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.notifications_none, size: 26),
+                            color: AppColors.textPrimary,
+                            tooltip: "Notifications",
+                            onPressed: () => Get.toNamed(AppRoutes.notifications),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.account_circle_outlined, size: 26),
+                            color: AppColors.textPrimary,
+                            tooltip: "Profile",
+                            onPressed: () => Get.toNamed(AppRoutes.profile),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -74,7 +84,10 @@ class HomeScreen extends StatelessWidget {
                         },
                       )),
                   const SizedBox(height: AppSizes.lg),
-                  const Text(
+                  // AppTextStyles.heading3 is no longer a compile-time
+                  // constant (GoogleFonts.poppins() isn't const), so this
+                  // Text can't be const anymore.
+                  Text(
                     "Welcome to Weekend Masti 👋",
                     style: AppTextStyles.heading3,
                   ),
@@ -146,7 +159,8 @@ class HomeScreen extends StatelessWidget {
                     );
                   }),
 
-                  const Text("My Upcoming Meetup", style: AppTextStyles.heading3),
+                  // Same reason as above — no const.
+                  Text("My Upcoming Meetup", style: AppTextStyles.heading3),
                   const SizedBox(height: AppSizes.sm),
                   controller.upcomingMeetup == null
                       ? Container(
@@ -156,10 +170,12 @@ class HomeScreen extends StatelessWidget {
                             color: AppColors.card,
                             borderRadius: BorderRadius.circular(AppSizes.radiusMedium),
                           ),
-                          child: const Column(
+                          // Column itself can't be const either, since one
+                          // of its children (below) uses AppTextStyles.
+                          child: Column(
                             children: [
                               Text("No upcoming meetups", style: AppTextStyles.heading3),
-                              SizedBox(height: AppSizes.xs),
+                              const SizedBox(height: AppSizes.xs),
                               Text(
                                 "Explore something fun this weekend!",
                                 style: AppTextStyles.body,
@@ -186,4 +202,3 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
-
