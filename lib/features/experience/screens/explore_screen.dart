@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../controllers/app_config_controller.dart';
 import '../controllers/subscription_controller.dart';
 import '../controllers/experience_controller.dart';
 import '../widgets/category_chip.dart';
@@ -18,6 +19,9 @@ class ExploreScreen extends StatelessWidget {
     final subscriptionController = Get.isRegistered<SubscriptionController>()
         ? Get.find<SubscriptionController>()
         : Get.put(SubscriptionController(), permanent: true);
+    final appConfigController = Get.isRegistered<AppConfigController>()
+        ? Get.find<AppConfigController>()
+        : Get.put(AppConfigController(), permanent: true);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -144,10 +148,17 @@ class ExploreScreen extends StatelessWidget {
 
       bottomNavigationBar: const AppBottomNavigation(currentIndex: 1),
       floatingActionButton: Obx(() {
-        // Only premium members see the Create button here. Free members
-        // can still explore and request to join — the upgrade prompt now
-        // lives on the Home screen instead of cluttering Explore.
-        if (!subscriptionController.isPremium.value) {
+        // Same gating rule as ExperienceController.addExperience():
+        // - premiumEnabled flag OFF -> everyone sees Create, regardless
+        //   of subscription status (free-for-all launch period).
+        // - premiumEnabled flag ON  -> only premium members see Create.
+        // Previously this only checked isPremium, so turning the flag
+        // off never actually revealed the button to free users — this
+        // was the bug that hid Create even when it should show.
+        final canCreate = !appConfigController.premiumEnabled.value ||
+            subscriptionController.isPremium.value;
+
+        if (!canCreate) {
           return const SizedBox.shrink();
         }
 

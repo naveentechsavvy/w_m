@@ -5,6 +5,7 @@ import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_text_styles.dart';
+import '../../experience/controllers/app_config_controller.dart';
 import '../../experience/controllers/home_controller.dart';
 import '../../experience/controllers/subscription_controller.dart';
 import '../../experience/widgets/bottom_navigation.dart';
@@ -20,6 +21,9 @@ class HomeScreen extends StatelessWidget {
     final subscriptionController = Get.isRegistered<SubscriptionController>()
         ? Get.find<SubscriptionController>()
         : Get.put(SubscriptionController(), permanent: true);
+    final appConfigController = Get.isRegistered<AppConfigController>()
+        ? Get.find<AppConfigController>()
+        : Get.put(AppConfigController(), permanent: true);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -93,9 +97,14 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSizes.lg),
 
-                  // Premium upgrade banner — only shown to free members.
+                  // Premium upgrade banner — only shown to free members,
+                  // AND only when the admin-controlled premiumEnabled
+                  // flag (Firestore: app_config/settings) is true.
                   // Replaces the old "Upgrade to Premium" FAB on Explore.
                   Obx(() {
+                    if (!appConfigController.premiumEnabled.value) {
+                      return const SizedBox.shrink();
+                    }
                     if (subscriptionController.isPremium.value) {
                       return const SizedBox.shrink();
                     }
