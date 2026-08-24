@@ -19,8 +19,11 @@ class Experience {
   final List<String> gallery;
   final String createdBy;
 
-  final double latitude;   // NEW
-  final double longitude;  // NEW
+  final double latitude;
+  final double longitude;
+
+  final double avgRating;   // NEW
+  final int reviewCount;    // NEW
 
   Experience({
     required this.id,
@@ -41,6 +44,8 @@ class Experience {
     this.createdBy = "",
     this.latitude = 0.0,
     this.longitude = 0.0,
+    this.avgRating = 0.0,
+    this.reviewCount = 0,
   });
 
   Map<String, dynamic> toMap() {
@@ -62,6 +67,8 @@ class Experience {
       'createdBy': createdBy,
       'latitude': latitude,
       'longitude': longitude,
+      'avgRating': avgRating,
+      'reviewCount': reviewCount,
     };
   }
 
@@ -85,6 +92,8 @@ class Experience {
       createdBy: map['createdBy'] ?? '',
       latitude: (map['latitude'] ?? 0.0).toDouble(),
       longitude: (map['longitude'] ?? 0.0).toDouble(),
+      avgRating: (map['avgRating'] ?? 0.0).toDouble(),
+      reviewCount: map['reviewCount'] ?? 0,
     );
   }
 

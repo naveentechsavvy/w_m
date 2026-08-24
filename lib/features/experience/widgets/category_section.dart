@@ -19,8 +19,8 @@ class CategorySection extends StatelessWidget {
             itemBuilder: (context, index) {
               final category = controller.categories[index];
               return CategoryChip(
-                label: category,
-                isSelected: controller.selectedCategory.value == category,
+                title: category,
+                selected: controller.selectedCategory.value == category,
                 onTap: () => controller.changeCategory(category),
               );
             },

@@ -3,8 +3,9 @@ import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../controllers/app_config_controller.dart';
+import '../controllers/subscription_controller.dart';
 import '../controllers/experience_controller.dart';
-import '../widgets/home_search_bar.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/experience_card.dart';
 import '../widgets/bottom_navigation.dart';
@@ -15,6 +16,12 @@ class ExploreScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.put(ExperienceController());
+    final subscriptionController = Get.isRegistered<SubscriptionController>()
+        ? Get.find<SubscriptionController>()
+        : Get.put(SubscriptionController(), permanent: true);
+    final appConfigController = Get.isRegistered<AppConfigController>()
+        ? Get.find<AppConfigController>()
+        : Get.put(AppConfigController(), permanent: true);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -27,51 +34,13 @@ class ExploreScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        "👋 Good Evening",
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      SizedBox(height: 5),
-                      Text(
-                        "Naveen",
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.groups_outlined, size: 26),
-                        color: AppColors.textPrimary,
-                        tooltip: "My Meetups",
-                        onPressed: () => Get.toNamed(AppRoutes.myMeetups),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.notifications_none, size: 28),
-                        color: AppColors.textPrimary,
-                        tooltip: "Notifications",
-                        onPressed: () => Get.toNamed(AppRoutes.notifications),
-                      ),
-                    ],
-                  ),
-                ],
+              const Text(
+                "Naveen",
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-
-              const SizedBox(height: 25),
-
-              const HomeSearchBar(),
 
               const SizedBox(height: 25),
 
@@ -178,15 +147,31 @@ class ExploreScreen extends StatelessWidget {
       ),
 
       bottomNavigationBar: const AppBottomNavigation(currentIndex: 1),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.primary,
-        onPressed: () => Get.toNamed(AppRoutes.createExperience),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          "Create",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-      ),
+      floatingActionButton: Obx(() {
+        // Same gating rule as ExperienceController.addExperience():
+        // - premiumEnabled flag OFF -> everyone sees Create, regardless
+        //   of subscription status (free-for-all launch period).
+        // - premiumEnabled flag ON  -> only premium members see Create.
+        // Previously this only checked isPremium, so turning the flag
+        // off never actually revealed the button to free users — this
+        // was the bug that hid Create even when it should show.
+        final canCreate = !appConfigController.premiumEnabled.value ||
+            subscriptionController.isPremium.value;
+
+        if (!canCreate) {
+          return const SizedBox.shrink();
+        }
+
+        return FloatingActionButton.extended(
+          backgroundColor: AppColors.primary,
+          onPressed: () => Get.toNamed(AppRoutes.createExperience),
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text(
+            "Create",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        );
+      }),
     );
   }
 }

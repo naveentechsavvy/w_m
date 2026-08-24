@@ -5,6 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../reviews/controllers/review_controller.dart';
+import '../../reviews/widgets/rating_summary.dart';
+import '../../reviews/widgets/review_card.dart';
 import '../controllers/experience_controller.dart';
 import '../controllers/join_requests_controller.dart';
 import '../models/experience_model.dart';
@@ -32,9 +35,21 @@ class ExpDetailsScreen extends StatelessWidget {
     final Experience experience = Get.arguments as Experience;
     final joinRequestsController = Get.find<JoinRequestsController>();
     final experienceController = Get.find<ExperienceController>();
+    final reviewController = Get.put(
+      ReviewController(meetupId: experience.id),
+      tag: experience.id,
+    );
 
-    final bool isMine = experience.organizerName == "You";
     final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    // FIX: previously compared experience.organizerName == "You", which
+    // is a display-label default, not an identity check. Every viewer
+    // saw isMine == true whenever organizerName happened to be "You",
+    // which hid the Join button for everyone, not just the real owner.
+    // createdBy stores the actual creator's uid, so compare against that.
+    final bool isMine = experience.createdBy.isNotEmpty &&
+        experience.createdBy == currentUid;
+
     final bool isParticipant = experience.participants.contains(currentUid);
     final bool canOpenChat = isMine || isParticipant;
     final bool hasCoordinates =
@@ -111,7 +126,14 @@ class ExpDetailsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
 
-                    // Location row — now shows distance (when GPS is
+                    RatingSummary(
+                      avgRating: experience.avgRating,
+                      reviewCount: experience.reviewCount,
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Location row — shows distance (when GPS is
                     // available) and a "Get Directions" button (when
                     // the meetup has coordinates saved).
                     Row(
@@ -237,14 +259,49 @@ class ExpDetailsScreen extends StatelessWidget {
                       Obx(() {
                         final existing =
                             joinRequestsController.myRequestFor(experience.id);
-                        final requested = joinRequestsController
-                            .hasRequested(experience.id);
+                        final status = existing?.status;
+
+                        // FIX: previously only handled pending vs
+                        // not-requested. Now covers all 4 states so the
+                        // requester sees the real status of their request.
+                        final bool isPending =
+                            status == JoinRequestStatus.pending;
+                        final bool isApproved =
+                            status == JoinRequestStatus.approved ||
+                                isParticipant;
+                        final bool isRejected =
+                            status == JoinRequestStatus.rejected;
+
+                        // Only these states block re-tapping. A rejected
+                        // or cancelled request should allow requesting again
+                        // if you want retry to be possible — currently
+                        // rejected is shown as a final disabled state per
+                        // your requirement ("should show rejected").
+                        final bool disabled =
+                            isPending || isApproved || isRejected;
+
+                        String label;
+                        Color bgColor;
+
+                        if (isApproved) {
+                          label = "Joined";
+                          bgColor = AppColors.textLight;
+                        } else if (isPending) {
+                          label = "Request Pending";
+                          bgColor = AppColors.textLight;
+                        } else if (isRejected) {
+                          label = "Rejected";
+                          bgColor = Colors.red.shade300;
+                        } else {
+                          label = "Request to Join";
+                          bgColor = AppColors.primary;
+                        }
 
                         return SizedBox(
                           width: double.infinity,
                           height: 54,
                           child: ElevatedButton(
-                            onPressed: requested
+                            onPressed: disabled
                                 ? null
                                 : () async {
                                     await joinRequestsController
@@ -257,20 +314,13 @@ class ExpDetailsScreen extends StatelessWidget {
                                     );
                                   },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: requested
-                                  ? AppColors.textLight
-                                  : AppColors.primary,
+                              backgroundColor: bgColor,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
                             child: Text(
-                              requested
-                                  ? (existing?.status ==
-                                          JoinRequestStatus.pending
-                                      ? "Request Pending"
-                                      : "Requested")
-                                  : "Request to Join",
+                              label,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -280,6 +330,85 @@ class ExpDetailsScreen extends StatelessWidget {
                           ),
                         );
                       }),
+
+                    const SizedBox(height: 32),
+
+                    // --------------------------------------------------
+                    // REVIEWS SECTION
+                    // --------------------------------------------------
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "Reviews",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        if (experience.reviewCount > 0)
+                          TextButton(
+                            onPressed: () => Get.toNamed(
+                              AppRoutes.reviews,
+                              arguments: experience,
+                            ),
+                            child: const Text("See All"),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    Obx(() {
+                      if (reviewController.isLoading.value) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      if (reviewController.reviews.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            "No reviews yet. Be the first to share your experience!",
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        );
+                      }
+                      return Column(
+                        children: reviewController.reviews
+                            .take(2)
+                            .map((r) => ReviewCard(review: r))
+                            .toList(),
+                      );
+                    }),
+
+                    const SizedBox(height: 8),
+
+                    Obx(() {
+                      if (!reviewController.canReview(experience)) {
+                        return const SizedBox.shrink();
+                      }
+                      return SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          onPressed: () => Get.toNamed(
+                            AppRoutes.writeReview,
+                            arguments: experience,
+                          ),
+                          icon: const Icon(Icons.rate_review_outlined),
+                          label: const Text("Write a Review"),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
 
                     const SizedBox(height: 20),
                   ],

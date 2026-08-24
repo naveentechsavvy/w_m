@@ -17,9 +17,6 @@ class AppBottomNavigation extends StatelessWidget {
       case 1:
         Get.offNamed(AppRoutes.explore);
         break;
-      case 2:
-        Get.offNamed(AppRoutes.profile);
-        break;
     }
   }
 
@@ -34,7 +31,6 @@ class AppBottomNavigation extends StatelessWidget {
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
         BottomNavigationBarItem(icon: Icon(Icons.explore), label: "Explore"),
-        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
       ],
     );
   }

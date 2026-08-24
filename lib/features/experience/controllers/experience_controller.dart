@@ -5,7 +5,9 @@ import 'package:geolocator/geolocator.dart';
 import '../../../core/services/location_service.dart';
 import '../models/experience_model.dart';
 import '../repositories/experience_repository.dart';
+import 'app_config_controller.dart';
 import 'my_meetups_controller.dart';
+import 'subscription_controller.dart';
 
 class ExperienceController extends GetxController {
   final ExperienceRepository repository = ExperienceRepository();
@@ -117,6 +119,45 @@ class ExperienceController extends GetxController {
     }
     final uid = currentUser.uid;
     debugPrint("[ExperienceController] uid=$uid");
+
+    // Premium gating: controlled by the admin flag at
+    // app_config/settings.premiumEnabled in Firestore.
+    // - Flag OFF  -> anyone can create a meetup (free-for-all launch
+    //                period), regardless of subscription status.
+    // - Flag ON   -> only users with an active Premium subscription
+    //                can create; everyone else is blocked here.
+    final appConfigController = Get.isRegistered<AppConfigController>()
+        ? Get.find<AppConfigController>()
+        : Get.put(AppConfigController(), permanent: true);
+    final subscriptionController = Get.isRegistered<SubscriptionController>()
+        ? Get.find<SubscriptionController>()
+        : Get.put(SubscriptionController(), permanent: true);
+
+    if (appConfigController.premiumEnabled.value &&
+        !subscriptionController.isPremium.value) {
+      debugPrint(
+          "[ExperienceController] blocked: premium is required and this user isn't subscribed");
+      throw Exception(
+          "Creating meetups is a Premium feature. Subscribe to Premium to create your own meetup.");
+    }
+
+    // One-active-group-at-a-time rule: an organizer can't create a new
+    // meetup while they still have one that hasn't happened yet.
+    // "Ended" means either the date/time has passed, or it was
+    // cancelled — cancelMeetup() already hard-deletes the doc (see
+    // ExperienceDataSource.deleteMeetup), so a cancelled meetup simply
+    // won't appear in getMeetupsByCreator() anymore. That means the
+    // only thing left to check here is whether any of the organizer's
+    // remaining meetups still have a future date.
+    final existingMeetups = await repository.getMeetupsByCreator(uid);
+    final hasActiveMeetup =
+        existingMeetups.any((e) => e.date.isAfter(DateTime.now()));
+    if (hasActiveMeetup) {
+      debugPrint(
+          "[ExperienceController] blocked: organizer already has an active meetup");
+      throw Exception(
+          "You already have an active meetup. You can create a new one once it's completed or cancelled.");
+    }
 
     final withCreator = Experience(
       id: newExperience.id,

@@ -40,6 +40,23 @@ class MyMeetupsController extends GetxController {
   int pendingRequestCountFor(String meetupId) =>
       joinRequestsController.pendingIncomingForMeetup(meetupId).length;
 
+  /// Cancels a meetup the current user created. Only intended to be
+  /// called when the meetup has zero joined participants — the screen
+  /// gates the button on that, this just does the removal and
+  /// optimistically updates the local list so the UI reflects it
+  /// immediately instead of waiting for a full reload.
+  Future<void> cancelMeetup(String meetupId) async {
+    try {
+      await experienceRepository.cancelMeetup(meetupId);
+      _createdMeetups.removeWhere((e) => e.id == meetupId);
+    } catch (_) {
+      Get.snackbar(
+        "Couldn't cancel",
+        "Something went wrong. Please try again.",
+      );
+    }
+  }
+
   // ===========================
   // Joined tab
   // ===========================

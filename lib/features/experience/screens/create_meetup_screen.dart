@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
@@ -342,6 +343,17 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       selectedTime!.minute,
     );
 
+    // FIX: creator identity was never being recorded. createdBy stayed
+    // at its default '' and organizerName stayed at its default "You"
+    // for every meetup, no matter who actually created it — which is
+    // what made the details screen unable to tell owners from everyone
+    // else. Both are now pulled from the logged-in Firebase user.
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final String creatorUid = currentUser?.uid ?? '';
+    final String creatorName = (currentUser?.displayName?.trim().isNotEmpty ?? false)
+        ? currentUser!.displayName!.trim()
+        : (currentUser?.phoneNumber ?? 'Organizer');
+
     final newExperience = Experience(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: titleController.text.trim(),
@@ -354,9 +366,11 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       seats: int.parse(seatsController.text.trim()),
       foodAvailable: false,
       description: descriptionController.text.trim(),
+      organizerName: creatorName,
       isPrivate: isPrivate,
       participants: const [],
       gallery: const [],
+      createdBy: creatorUid,
       latitude: selectedLat ?? 0.0,
       longitude: selectedLng ?? 0.0,
     );

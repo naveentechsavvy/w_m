@@ -36,6 +36,12 @@ enum ChatType {
 /// [meetupId] is still stored on every message (not just encoded in
 /// roomId) so we can query "all chats belonging to meetup X" later,
 /// e.g. for moderation or admin tooling, without parsing roomId strings.
+///
+/// [isDeleted] is a soft-delete flag, not a removed doc — the doc stays
+/// in place (so stream ordering/pagination never shifts) and [text] is
+/// cleared. The UI renders a placeholder for deleted messages instead of
+/// [text]. [isEdited]/[editedAt] track edits the same way WhatsApp shows
+/// an "(edited)" tag rather than a diff/history.
 class Message {
   final String id;
   final String roomId;
@@ -45,6 +51,9 @@ class Message {
   final String senderName;
   final String text;
   final DateTime sentAt;
+  final bool isEdited;
+  final bool isDeleted;
+  final DateTime? editedAt;
 
   Message({
     required this.id,
@@ -55,6 +64,9 @@ class Message {
     required this.senderName,
     required this.text,
     required this.sentAt,
+    this.isEdited = false,
+    this.isDeleted = false,
+    this.editedAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -66,6 +78,9 @@ class Message {
       'senderName': senderName,
       'text': text,
       'sentAt': Timestamp.fromDate(sentAt),
+      'isEdited': isEdited,
+      'isDeleted': isDeleted,
+      'editedAt': editedAt != null ? Timestamp.fromDate(editedAt!) : null,
     };
   }
 
@@ -82,6 +97,13 @@ class Message {
       senderName: map['senderName'] ?? '',
       text: map['text'] ?? '',
       sentAt: (map['sentAt'] as Timestamp).toDate(),
+      // Defaulted so messages written before this change (no isEdited/
+      // isDeleted fields yet) still parse correctly instead of throwing.
+      isEdited: map['isEdited'] as bool? ?? false,
+      isDeleted: map['isDeleted'] as bool? ?? false,
+      editedAt: map['editedAt'] != null
+          ? (map['editedAt'] as Timestamp).toDate()
+          : null,
     );
   }
 

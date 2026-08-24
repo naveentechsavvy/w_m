@@ -39,6 +39,15 @@ dependencies:
   geolocator: ^14.0.2
   geocoding: ^5.0.0
   url_launcher: ^6.3.1
+  
+
+  # Voice Search
+  speech_to_text: ^7.0.0
+  permission_handler: ^11.3.1
+
+  # Payments
+  razorpay_flutter: ^1.4.0
+
   # Utilities
   intl: ^0.20.2
 
@@ -48,12 +57,24 @@ dev_dependencies:
 
   flutter_lints: ^6.0.0
 
+  # App Icon Generator
+  flutter_launcher_icons: ^0.14.1
+
 flutter:
   uses-material-design: true
 
   assets:
-      - assets/images/
-      - assets/banners/
-      - assets/experiences/
-      - assets/logos/
-      - assets/logo/
+    - assets/images/
+    - assets/banners/
+    - assets/experiences/
+    - assets/logos/
+    - assets/logo/
+
+# App Icon Configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FDECD6"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"

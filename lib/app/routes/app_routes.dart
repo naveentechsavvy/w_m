@@ -19,4 +19,9 @@ abstract class AppRoutes {
   static const notifications = '/notifications';
 
   static const chat = '/chat';
+
+  static const reviews = '/reviews';
+  static const writeReview = '/write-review';
+
+  static const premiumPlan = '/premium-plan';
 }

@@ -2,13 +2,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/experience_model.dart';
 import '../models/join_request_model.dart';
+import '../../notifications/models/app_notification_model.dart';
+import '../../notifications/repositories/notification_repository.dart';
 import 'experience_datasource.dart';
 
 class JoinRequestDataSource {
   final _col = FirebaseFirestore.instance.collection('join_requests');
   final ExperienceDataSource _experienceDataSource = ExperienceDataSource();
+  final NotificationRepository _notificationRepository = NotificationRepository();
 
   String get _uid => FirebaseAuth.instance.currentUser!.uid;
+
+  /// Looks up the requester's real display name from their profile
+  /// (users/{uid}.name) rather than relying on FirebaseAuth's
+  /// displayName, which is frequently null (e.g. phone/OTP sign-in).
+  Future<String> _getRequesterName(String uid) async {
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    return userDoc.data()?['name'] as String? ?? 'Someone';
+  }
 
   Future<void> sendRequest(Experience meetup) async {
     final existing = await _col
@@ -17,10 +28,12 @@ class JoinRequestDataSource {
         .get();
     if (existing.docs.isNotEmpty) return; // already requested
 
+    final requesterName = await _getRequesterName(_uid);
+
     await _col.doc().set({
       'meetupId': meetup.id,
       'requesterId': _uid,
-      'requesterName': FirebaseAuth.instance.currentUser?.displayName ?? 'You',
+      'requesterName': requesterName,
       'status': 'pending',
       'requestedAt': Timestamp.now(),
     });
@@ -43,8 +56,17 @@ class JoinRequestDataSource {
   /// Throws a [StateError] if the meetup is already full. Callers
   /// (JoinRequestsController) should catch this and surface it to the
   /// organizer rather than letting it fail silently.
+  ///
+  /// On success, sends a "request approved" notification to the
+  /// requester. The notification write happens AFTER the transaction
+  /// commits, not inside it — Firestore transactions can retry, and a
+  /// notification is a side effect we only want to happen once, on
+  /// confirmed success. It's a best-effort follow-up write: if it fails,
+  /// the approval itself has already succeeded and isn't rolled back.
   Future<void> approve(String requestId) async {
     final requestRef = _col.doc(requestId);
+    String? requesterId;
+    String? meetupTitle;
 
     await FirebaseFirestore.instance.runTransaction((txn) async {
       final requestSnap = await txn.get(requestRef);
@@ -62,7 +84,7 @@ class JoinRequestDataSource {
       if (currentStatus != 'pending') return;
 
       final meetupId = requestData['meetupId'] as String;
-      final requesterId = requestData['requesterId'] as String;
+      requesterId = requestData['requesterId'] as String;
       final meetupRef = _experienceDataSource.meetupDocRef(meetupId);
 
       final meetupSnap = await txn.get(meetupRef);
@@ -71,6 +93,7 @@ class JoinRequestDataSource {
       }
 
       final meetupData = meetupSnap.data()!;
+      meetupTitle = meetupData['title'] as String? ?? 'the meetup';
       final int seats = (meetupData['seats'] ?? 0) as int;
       final int joined = (meetupData['joined'] ?? 0) as int;
       final List participants =
@@ -94,10 +117,45 @@ class JoinRequestDataSource {
         'joined': joined + 1,
       });
     });
+
+    if (requesterId != null) {
+      await _notificationRepository.create(
+        userId: requesterId!,
+        type: NotificationType.requestApproved,
+        title: 'Request approved 🎉',
+        body: 'Your request to join "${meetupTitle ?? 'the meetup'}" was approved.',
+        relatedId: requestId,
+      );
+    }
   }
 
-  Future<void> reject(String requestId) =>
-      _col.doc(requestId).update({'status': 'rejected'});
+  /// Rejects a join request and notifies the requester.
+  Future<void> reject(String requestId) async {
+    final requestSnap = await _col.doc(requestId).get();
+    if (!requestSnap.exists) return;
+
+    final requestData = requestSnap.data()!;
+    final requesterId = requestData['requesterId'] as String?;
+    final meetupId = requestData['meetupId'] as String?;
+
+    await _col.doc(requestId).update({'status': 'rejected'});
+
+    if (requesterId == null) return;
+
+    String meetupTitle = 'the meetup';
+    if (meetupId != null) {
+      final meetup = await _experienceDataSource.getMeetupById(meetupId);
+      if (meetup != null) meetupTitle = meetup.title;
+    }
+
+    await _notificationRepository.create(
+      userId: requesterId,
+      type: NotificationType.requestRejected,
+      title: 'Request declined',
+      body: 'Your request to join "$meetupTitle" was declined.',
+      relatedId: requestId,
+    );
+  }
 
   Future<void> cancel(String requestId) =>
       _col.doc(requestId).update({'status': 'cancelled'});

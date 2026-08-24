@@ -12,11 +12,19 @@ import '../models/message_model.dart';
 /// for those docs, so old group messages still display correctly. No
 /// backfill script is required for group chat. There is no pre-existing
 /// data to migrate for private/organizer chat since those didn't exist yet.
+/// The same applies to isEdited/isDeleted — pre-existing docs default to
+/// false via Message.fromMap(), no backfill needed there either.
 ///
 /// FIRESTORE INDEX: this query (roomId ==, orderBy sentAt) needs a
 /// composite index on (roomId ASC, sentAt ASC). The old (meetupId ASC,
 /// sentAt ASC) index can be deleted once nothing queries by meetupId
 /// directly anymore.
+///
+/// PERMISSION NOTE: edit/delete ownership + time-window checks happen in
+/// ChatController.canEditOrDelete() using data already streamed to the
+/// client, so this layer doesn't re-fetch-and-check before writing. For
+/// production hardening, mirror the same senderId + time-window rule in
+/// Firestore security rules so it isn't client-enforced only.
 class ChatDataSource {
   final _messages = FirebaseFirestore.instance.collection('messages');
 
@@ -64,5 +72,29 @@ class ChatDataSource {
     );
 
     await _messages.add(message.toMap());
+  }
+
+  /// Updates the text of an existing message and marks it as edited.
+  /// Ownership + time-window checks are the caller's responsibility (see
+  /// PERMISSION NOTE above) — this method trusts messageId is editable.
+  Future<void> editMessage({
+    required String messageId,
+    required String newText,
+  }) async {
+    await _messages.doc(messageId).update({
+      'text': newText.trim(),
+      'isEdited': true,
+      'editedAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
+
+  /// Soft-deletes a message: the doc is kept (so stream ordering never
+  /// shifts) but isDeleted flips true and text is cleared. The UI renders
+  /// a placeholder instead of text for any message with isDeleted == true.
+  Future<void> deleteMessage(String messageId) async {
+    await _messages.doc(messageId).update({
+      'isDeleted': true,
+      'text': '',
+    });
   }
 }
