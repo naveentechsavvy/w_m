@@ -71,10 +71,10 @@ flutter:
     - assets/logo/ 
 
   fonts:
-    - family: Nunito
+    - family: Fredoka
       fonts:
-        - asset: assets/fonts/Nunito-ExtraBold.ttf
-          weight: 800
+        - asset: assets/fonts/Fredoka-Bold.ttf
+          weight: 700
  
 # App Icon Configuration 
 flutter_launcher_icons: 
@@ -83,4 +83,4 @@ flutter_launcher_icons:
   image_path: "assets/icon/app_icon.png" 
   min_sdk_android: 21 
   adaptive_icon_background: "#FDECD6" 
-  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png" 
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"

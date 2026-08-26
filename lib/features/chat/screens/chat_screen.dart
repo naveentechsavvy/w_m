@@ -5,8 +5,15 @@ import '../../../app/theme/colors.dart';
 import '../controllers/chat_controller.dart';
 import '../models/message_model.dart';
 
-class ChatScreen extends StatelessWidget {
+class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final ScrollController _scrollController = ScrollController();
 
   /// Formats a DateTime as "h:mm AM/PM" without pulling in intl just
   /// for this one label.
@@ -16,6 +23,16 @@ class ChatScreen extends StatelessWidget {
     final period = hour24 >= 12 ? 'PM' : 'AM';
     final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
     return '$hour12:$minute $period';
+  }
+
+  void _scrollToBottom() {
+    // Runs after the frame builds, once the ListView actually knows its
+    // new content height, so jumping to maxScrollExtent lands correctly.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
   }
 
   void _showMessageActions(
@@ -91,21 +108,23 @@ class ChatScreen extends StatelessWidget {
   }
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final controller = Get.find<ChatController>();
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        // Not wrapped in Obx: chatType, meetupTitle, and otherUserName
-        // are plain fields set once in onInit() and never change again,
-        // so an Obx here has no observable to ever track — that's what
-        // was causing GetX's "no observable inserted" error to render
-        // permanently in place of the title.
         title: Text(
           controller.displayTitle,
           style: const TextStyle(
@@ -142,15 +161,15 @@ class ChatScreen extends StatelessWidget {
                 );
               }
 
-              // Sender name label above a bubble only makes sense in
-              // group chat, where more than one other participant can
-              // appear in the thread. In private/organizer chat there's
-              // only ever one other person, so the label is redundant
-              // clutter. Shown for every message (including your own)
-              // in group chat, so it's consistent across the thread.
+              // Every rebuild of this Obx (new/edited/deleted message)
+              // re-scrolls to the bottom so the latest message is
+              // always visible, keyboard open or closed.
+              _scrollToBottom();
+
               final showSenderLabel = controller.chatType == ChatType.group;
 
               return ListView.builder(
+                controller: _scrollController,
                 padding: const EdgeInsets.all(16),
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
@@ -203,11 +222,6 @@ class ChatScreen extends StatelessWidget {
                             ),
                           ),
                         Text(
-                          // Deleted messages never render their (already
-                          // blanked) text — show a fixed placeholder
-                          // instead so a race between the delete write
-                          // and a stale local value can't briefly show
-                          // an empty bubble.
                           message.isDeleted
                               ? 'This message was deleted'
                               : message.text,

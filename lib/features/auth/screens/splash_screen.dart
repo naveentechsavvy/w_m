@@ -208,20 +208,26 @@ class _AnimatedTitle extends StatelessWidget {
       },
       child: RichText(
         text: TextSpan(
-          style: const TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 40,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -1.2,
-          ),
           children: [
             TextSpan(
               text: "Weekend ",
-              style: TextStyle(color: AppColors.textPrimary),
+              style: TextStyle(
+                fontFamily: 'Fredoka',
+                fontSize: 40,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+                color: AppColors.textPrimary,
+              ),
             ),
             TextSpan(
               text: "Masti",
-              style: TextStyle(color: AppColors.primary),
+              style: TextStyle(
+                fontFamily: 'Fredoka',
+                fontSize: 40,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+                color: AppColors.primary,
+              ),
             ),
           ],
         ),
