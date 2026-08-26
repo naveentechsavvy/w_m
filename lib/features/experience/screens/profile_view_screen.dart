@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -697,6 +698,30 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     );
 
     if (confirmed != true) return;
+
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+
+      // Mark inactive in Firestore BEFORE signing out — once signed out,
+      // Firestore security rules will likely block the write.
+      if (uid != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .update({'isActive': false});
+      }
+
+      // Actually sign out of Firebase Auth. (This was missing before —
+      // the old logout only cleared local prefs and left the Firebase
+      // session active in the background.)
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      debugPrint(
+        "[ProfileView] Logout Firebase step failed: $e",
+      );
+      // Continue with local logout even if the Firestore/Auth call
+      // fails, so the user isn't stuck unable to log out.
+    }
 
     final prefs =
         await SharedPreferences.getInstance();
