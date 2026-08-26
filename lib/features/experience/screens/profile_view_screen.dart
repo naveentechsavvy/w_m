@@ -1329,6 +1329,16 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
         const SizedBox(height: 14),
 
         // --------------------------------------------------------
+        // FRIENDS
+        // --------------------------------------------------------
+
+        settingsTile(
+          icon: Icons.people_outline,
+          title: "Friends",
+          onTap: () => Get.toNamed(AppRoutes.friends),
+        ),
+
+        // --------------------------------------------------------
         // SETTINGS
         // --------------------------------------------------------
 

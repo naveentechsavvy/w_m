@@ -12,4 +12,9 @@ class JoinRequestRepository {
   Future<List<JoinRequest>> getMyRequests() => datasource.getMyRequests();
   Future<List<JoinRequest>> getRequestsForMeetup(Experience meetup) =>
       datasource.getRequestsForMeetup(meetup);
+
+  /// Live stream of incoming requests across all meetups I organize —
+  /// used so the Notifications feed updates in real time.
+  Stream<List<JoinRequest>> watchIncomingForMeetups(List<Experience> meetups) =>
+      datasource.watchIncomingForMeetups(meetups);
 }

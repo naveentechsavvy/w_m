@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/routes/app_routes.dart';
@@ -58,7 +59,7 @@ class OnboardingScreen extends StatelessWidget {
                         Text(
                           item.title,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: GoogleFonts.poppins(
                             fontSize: 30,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textPrimary,

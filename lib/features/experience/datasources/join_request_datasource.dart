@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/experience_model.dart';
@@ -180,5 +182,71 @@ class JoinRequestDataSource {
     return snap.docs
         .map((d) => JoinRequest.fromMap(d.id, d.data(), meetup, _uid))
         .toList();
+  }
+
+  /// Live stream of ALL join requests (any status) across every meetup
+  /// I organize — used so new incoming requests show up in the
+  /// Notifications feed the instant they're written to Firestore,
+  /// instead of only appearing after the screen is manually reopened
+  /// or pulled-to-refresh (which was the previous one-shot .get()
+  /// behavior in getRequestsForMeetup/getMyRequests).
+  ///
+  /// Firestore's `whereIn` only accepts up to 10 values per query, so
+  /// if the organizer has more than 10 active meetups, the id list is
+  /// split into chunks, each chunk gets its own live snapshot stream,
+  /// and the results are merged into one combined stream.
+  Stream<List<JoinRequest>> watchIncomingForMeetups(List<Experience> meetups) {
+    if (meetups.isEmpty) return Stream.value(const []);
+
+    final meetupMap = {for (final m in meetups) m.id: m};
+    final ids = meetupMap.keys.toList();
+
+    final chunks = <List<String>>[];
+    for (int i = 0; i < ids.length; i += 10) {
+      chunks.add(ids.sublist(i, i + 10 > ids.length ? ids.length : i + 10));
+    }
+
+    final controller = StreamController<List<JoinRequest>>.broadcast();
+    final latestByChunk =
+        List<List<JoinRequest>>.filled(chunks.length, const []);
+    final subs = <StreamSubscription>[];
+
+    void emit() {
+      final combined = <String, JoinRequest>{};
+      for (final list in latestByChunk) {
+        for (final r in list) {
+          combined[r.id] = r;
+        }
+      }
+      if (!controller.isClosed) controller.add(combined.values.toList());
+    }
+
+    for (int i = 0; i < chunks.length; i++) {
+      final chunkIndex = i;
+      final sub = _col
+          .where('meetupId', whereIn: chunks[chunkIndex])
+          .snapshots()
+          .listen((snap) {
+        latestByChunk[chunkIndex] = snap.docs
+            .map((d) {
+              final data = d.data();
+              final meetup = meetupMap[data['meetupId']];
+              if (meetup == null) return null;
+              return JoinRequest.fromMap(d.id, data, meetup, _uid);
+            })
+            .whereType<JoinRequest>()
+            .toList();
+        emit();
+      });
+      subs.add(sub);
+    }
+
+    controller.onCancel = () {
+      for (final s in subs) {
+        s.cancel();
+      }
+    };
+
+    return controller.stream;
   }
 }

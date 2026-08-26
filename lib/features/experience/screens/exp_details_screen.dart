@@ -204,9 +204,18 @@ class ExpDetailsScreen extends StatelessWidget {
                           Icons.currency_rupee,
                         ),
                         const SizedBox(width: 12),
-                        _statPill(
-                          "${experience.joined}/${experience.seats} Joined",
-                          Icons.groups_outlined,
+                        // Tapping this now opens the Participants screen,
+                        // so you can see who joined and send friend
+                        // requests to them.
+                        GestureDetector(
+                          onTap: () => Get.toNamed(
+                            AppRoutes.participants,
+                            arguments: experience,
+                          ),
+                          child: _statPill(
+                            "${experience.joined}/${experience.seats} Joined",
+                            Icons.groups_outlined,
+                          ),
                         ),
                       ],
                     ),

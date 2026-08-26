@@ -20,59 +20,7 @@ class ChoiceScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Welcome
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.waving_hand_rounded,
-                      color: AppColors.primary,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Welcome',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 22),
-
-              // Heading
-              const Text(
-                'What would you like\nto do today?',
-                style: TextStyle(
-                  fontSize: 32,
-                  height: 1.15,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              const Text(
-                'Choose how you want to spend your weekend.',
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.4,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               // --------------------------------------------------
               // FIND WHAT'S HAPPENING
@@ -112,19 +60,6 @@ class ChoiceScreen extends StatelessWidget {
                     snackPosition: SnackPosition.BOTTOM,
                   );
                 },
-              ),
-
-              const SizedBox(height: 28),
-
-              // Bottom message
-              Center(
-                child: Text(
-                  'Make your weekend memorable ✨',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary.withOpacity(0.8),
-                  ),
-                ),
               ),
             ],
           ),
