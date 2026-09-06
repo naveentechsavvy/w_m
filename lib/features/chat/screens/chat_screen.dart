@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -115,7 +116,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.find<ChatController>();
+    final args = Get.arguments;
+    final map = args is Map ? args : <String, dynamic>{};
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final roomId = ChatController.resolveRoomId(map, uid);
+    final controller = Get.find<ChatController>(tag: roomId);
 
     return Scaffold(
       resizeToAvoidBottomInset: true,

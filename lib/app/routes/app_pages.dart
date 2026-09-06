@@ -22,6 +22,12 @@ import '../../features/reviews/screens/write_review_screen.dart';
 import '../../features/experience/screens/premium_plan_screen.dart';
 import '../../features/friends/screens/friends_screen.dart';
 import '../../features/experience/screens/participants_screen.dart';
+import '../../features/food/screens/food_screen.dart';
+import '../../features/food/screens/cart_screen.dart';
+import '../../features/food/screens/address_screen.dart';
+import '../../features/food/screens/order_success_screen.dart';
+import '../../features/food/screens/order_tracking_screen.dart';
+import '../../features/food/screens/my_orders_screen.dart';
 
 class AppPages {
   static final pages = [
@@ -106,6 +112,30 @@ class AppPages {
     GetPage(
       name: AppRoutes.nameEntry,
       page: () => const NameEntryScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.food,
+      page: () => const FoodScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.cart,
+      page: () => const CartScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.deliveryAddress,
+      page: () => const AddressScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.orderSuccess,
+      page: () => const OrderSuccessScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.orderTracking,
+      page: () => const OrderTrackingScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.myOrders,
+      page: () => const MyOrdersScreen(),
     ),
   ];
 }

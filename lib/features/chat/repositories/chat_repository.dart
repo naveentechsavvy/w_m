@@ -18,8 +18,16 @@ class ChatRepository {
         uidB: uidB,
       );
 
-  Stream<List<Message>> streamMessages(String roomId) =>
-      datasource.streamMessages(roomId);
+  Stream<List<Message>> streamMessages({
+    required String roomId,
+    required ChatType chatType,
+    required String currentUid,
+  }) =>
+      datasource.streamMessages(
+        roomId: roomId,
+        chatType: chatType,
+        currentUid: currentUid,
+      );
 
   Future<void> sendMessage({
     required String roomId,
@@ -27,6 +35,7 @@ class ChatRepository {
     required ChatType chatType,
     required String senderName,
     required String text,
+    String? otherUserId,
   }) =>
       datasource.sendMessage(
         roomId: roomId,
@@ -34,6 +43,7 @@ class ChatRepository {
         chatType: chatType,
         senderName: senderName,
         text: text,
+        otherUserId: otherUserId,
       );
 
   Future<void> editMessage({

@@ -15,6 +15,11 @@ class MeetupStatusCard extends StatelessWidget {
   final VoidCallback? onActionTap;
   final VoidCallback? onTap;
 
+  /// Shown as a small note below the card when present — e.g. the
+  /// organizer's reason for cancelling. Pass `experience.cancelReason`
+  /// from the Cancelled tab if you want this visible there.
+  final String? subtitleNote;
+
   const MeetupStatusCard({
     super.key,
     required this.experience,
@@ -23,6 +28,7 @@ class MeetupStatusCard extends StatelessWidget {
     this.actionLabel,
     this.onActionTap,
     this.onTap,
+    this.subtitleNote,
   });
 
   @override
@@ -56,6 +62,19 @@ class MeetupStatusCard extends StatelessWidget {
               ),
           ],
         ),
+
+        if (subtitleNote != null && subtitleNote!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              subtitleNote!,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: Colors.grey.shade600,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
 
         if (actionLabel != null)
           Padding(

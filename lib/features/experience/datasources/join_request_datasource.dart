@@ -42,7 +42,15 @@ class JoinRequestDataSource {
   }
 
   /// Approves a join request AND adds the requester to the meetup's
-  /// `participants` array + increments `joined`, atomically.
+  /// `participants` array + increments `joined` + adds the requester
+  /// to `approvedMemberIds`, atomically.
+  ///
+  /// `approvedMemberIds` exists specifically so Firestore security
+  /// rules (for the `messages` collection) can cheaply check chat
+  /// membership with a single doc lookup — `join_requests` docs use
+  /// auto-generated IDs, so rules can't query them directly to answer
+  /// "is this uid an approved member of this meetup." This array is
+  /// the rules-friendly mirror of that same fact.
   ///
   /// This has to be a single transaction, not two separate writes:
   /// - If the app crashed between "flip status" and "add participant",
@@ -104,8 +112,13 @@ class JoinRequestDataSource {
       if (participants.contains(requesterId)) {
         // Already a participant somehow (e.g. re-approving after a
         // previous partial failure) — just settle the status, don't
-        // double add or double increment.
+        // double add or double increment. Still make sure
+        // approvedMemberIds has them, in case this partial-failure
+        // happened before that field existed.
         txn.update(requestRef, {'status': 'approved'});
+        txn.update(meetupRef, {
+          'approvedMemberIds': FieldValue.arrayUnion([requesterId]),
+        });
         return;
       }
 
@@ -117,6 +130,7 @@ class JoinRequestDataSource {
       txn.update(meetupRef, {
         'participants': FieldValue.arrayUnion([requesterId]),
         'joined': joined + 1,
+        'approvedMemberIds': FieldValue.arrayUnion([requesterId]),
       });
     });
 

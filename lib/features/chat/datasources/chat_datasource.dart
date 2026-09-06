@@ -15,10 +15,22 @@ import '../models/message_model.dart';
 /// The same applies to isEdited/isDeleted — pre-existing docs default to
 /// false via Message.fromMap(), no backfill needed there either.
 ///
-/// FIRESTORE INDEX: this query (roomId ==, orderBy sentAt) needs a
-/// composite index on (roomId ASC, sentAt ASC). The old (meetupId ASC,
-/// sentAt ASC) index can be deleted once nothing queries by meetupId
-/// directly anymore.
+/// QUERY-VS-RULES NOTE: streamMessages() branches into two different
+/// query shapes (group vs private/organizer) on purpose. Firestore
+/// rejects a list query with permission-denied unless the query's own
+/// `where` filters let it statically prove every possible returned
+/// document satisfies the security rule — a filter on `roomId` alone
+/// isn't enough, since the read rule also checks `chatType`/
+/// `participants`, fields the query wasn't filtering on. Adding a
+/// matching filter for each case (chatType == 'group', or
+/// participants arrayContains uid) is what makes Firestore able to
+/// prove it and allow the read.
+///
+/// FIRESTORE INDEXES: this needs TWO composite indexes now:
+///   (roomId ASC, chatType ASC, sentAt ASC)        - for group chat
+///   (roomId ASC, participants ARRAY, sentAt ASC)  - for private/organizer
+/// Firestore will show a console link to auto-create whichever one is
+/// missing the first time each query type runs.
 ///
 /// PERMISSION NOTE: edit/delete ownership + time-window checks happen in
 /// ChatController.canEditOrDelete() using data already streamed to the
@@ -40,24 +52,53 @@ class ChatDataSource {
     return '${meetupId}_${sorted[0]}_${sorted[1]}';
   }
 
-  Stream<List<Message>> streamMessages(String roomId) {
-    return _messages
-        .where('roomId', isEqualTo: roomId)
+  /// [currentUid] is required for private/organizer chat so the query
+  /// can filter `participants arrayContains uid` — matching the security
+  /// rule so Firestore can prove the read is allowed (see QUERY-VS-RULES
+  /// NOTE above). Ignored for group chat.
+  Stream<List<Message>> streamMessages({
+    required String roomId,
+    required ChatType chatType,
+    required String currentUid,
+  }) {
+    Query query = _messages.where('roomId', isEqualTo: roomId);
+
+    if (chatType == ChatType.group) {
+      query = query.where('chatType', isEqualTo: ChatType.group.value);
+    } else {
+      query = query.where('participants', arrayContains: currentUid);
+    }
+
+    return query
         .orderBy('sentAt', descending: false)
         .snapshots()
         .map((snap) => snap.docs.map((d) => Message.fromDoc(d)).toList());
   }
 
+  /// [otherUserId] is required for private/organizer messages so the
+  /// stored [Message.participants] can be set to exactly the two uids
+  /// allowed to read this thread — Firestore security rules check this
+  /// field. Left null (and participants omitted) for group chat, where
+  /// membership isn't enforced at the message level.
   Future<void> sendMessage({
     required String roomId,
     required String meetupId,
     required ChatType chatType,
     required String senderName,
     required String text,
+    String? otherUserId,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       throw StateError('Cannot send a message: no authenticated user.');
+    }
+
+    final isDirect = chatType == ChatType.private || chatType == ChatType.organizer;
+    if (isDirect && (otherUserId == null || otherUserId.isEmpty)) {
+      throw ArgumentError(
+        'ChatDataSource.sendMessage: otherUserId is required for chatType '
+        '${chatType.value}',
+      );
     }
 
     final message = Message(
@@ -69,6 +110,7 @@ class ChatDataSource {
       senderName: senderName,
       text: text.trim(),
       sentAt: DateTime.now(),
+      participants: isDirect ? ([uid, otherUserId!]..sort()) : null,
     );
 
     await _messages.add(message.toMap());
