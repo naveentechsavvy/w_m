@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -416,6 +417,41 @@ class _ProfileScreenState
         "profile_completed",
         true,
       );
+
+      // --------------------------------------------------------
+      // SYNC TO FIRESTORE
+      // (so other users can look up this profile — needed for
+      // participants list, friend requests, chat sender names, etc.)
+      // --------------------------------------------------------
+
+      final uid =
+          FirebaseAuth
+              .instance
+              .currentUser
+              ?.uid;
+
+      if (uid != null) {
+        await FirebaseFirestore
+            .instance
+            .collection("users")
+            .doc(uid)
+            .set(
+          {
+            "name": name,
+            "bio": bio,
+            "email": email,
+            "phone": phone,
+            "city": city,
+            "gender": gender,
+            if (uploadedUrl != null &&
+                uploadedUrl.isNotEmpty)
+              "photoUrl": uploadedUrl,
+            "updatedAt":
+                FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
 
       // --------------------------------------------------------
       // GO TO APP

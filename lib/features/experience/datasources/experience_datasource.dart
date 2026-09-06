@@ -33,6 +33,10 @@ class ExperienceDataSource {
     return Experience.fromDoc(doc);
   }
 
+  Future<void> updateMeetup(String id, Map<String, dynamic> changes) async {
+    await _col.doc(id).update(changes);
+  }
+
   /// Deletes a meetup doc outright. Only meant to be called for a
   /// meetup with zero joined participants (see cancelMeetup in the
   /// repository/controller for the guard) — for a meetup that already

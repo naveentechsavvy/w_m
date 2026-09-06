@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/colors.dart';
+
 class HomeSearchBar extends StatelessWidget {
   final bool showVoiceIcon;
   final bool isListening;
@@ -20,11 +22,11 @@ class HomeSearchBar extends StatelessWidget {
       controller: searchController,
       decoration: InputDecoration(
         hintText: "Search Experiences",
-        prefixIcon: const Icon(Icons.search),
+        prefixIcon: Icon(Icons.search, color: AppColors.primary),
         suffixIcon: showVoiceIcon
             ? IconButton(
                 icon: Icon(isListening ? Icons.mic : Icons.mic_none),
-                color: isListening ? Colors.deepOrange : null,
+                color: AppColors.primary,
                 onPressed: onVoiceTap,
               )
             : null,

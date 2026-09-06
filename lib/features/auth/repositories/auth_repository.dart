@@ -24,4 +24,8 @@ class AuthRepository {
       otp: otp,
     );
   }
+
+  Future<void> signOut() {
+    return datasource.signOut();
+  }
 }

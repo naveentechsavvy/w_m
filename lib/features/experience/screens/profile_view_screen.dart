@@ -1,5 +1,6 @@
 import 'dart:typed_data';
-
+import '../../../app/routes/app_routes.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +8,6 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 
 class ProfileViewScreen extends StatefulWidget {
@@ -186,7 +186,6 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   // ============================================================
 
   Future<String?> uploadAvatarIfNeeded() async {
-    // No new image selected.
     if (avatarBytes == null) {
       return avatarUrl;
     }
@@ -194,9 +193,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
-      debugPrint(
-        "[ProfileView] No logged-in Firebase user.",
-      );
+      debugPrint("[ProfileView] No logged-in Firebase user.");
       return avatarUrl;
     }
 
@@ -207,28 +204,20 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     }
 
     try {
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child("avatars/$uid.jpg");
+      final ref = FirebaseStorage.instance.ref().child("avatars/$uid.jpg");
 
       await ref.putData(
         avatarBytes!,
-        SettableMetadata(
-          contentType: "image/jpeg",
-        ),
+        SettableMetadata(contentType: "image/jpeg"),
       );
 
       final url = await ref.getDownloadURL();
 
-      debugPrint(
-        "[ProfileView] Avatar uploaded successfully.",
-      );
+      debugPrint("[ProfileView] Avatar uploaded successfully.");
 
       return url;
     } catch (e) {
-      debugPrint(
-        "[ProfileView] Avatar upload failed: $e",
-      );
+      debugPrint("[ProfileView] Avatar upload failed: $e");
 
       Get.snackbar(
         "Photo Upload Failed",
@@ -261,10 +250,6 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     final updatedPhone = phoneController.text.trim();
     final updatedCity = cityController.text.trim();
 
-    // ------------------------------------------------------------
-    // VALIDATION
-    // ------------------------------------------------------------
-
     if (updatedName.isEmpty) {
       Get.snackbar(
         "Name Required",
@@ -278,8 +263,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
       return;
     }
 
-    if (updatedEmail.isNotEmpty &&
-        !GetUtils.isEmail(updatedEmail)) {
+    if (updatedEmail.isNotEmpty && !GetUtils.isEmail(updatedEmail)) {
       Get.snackbar(
         "Invalid Email",
         "Please enter a valid email address.",
@@ -325,70 +309,22 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     }
 
     try {
-      // ----------------------------------------------------------
-      // UPLOAD IMAGE IF USER SELECTED A NEW ONE
-      // ----------------------------------------------------------
-
       final uploadedUrl = await uploadAvatarIfNeeded();
 
-      // ----------------------------------------------------------
-      // SAVE PROFILE DATA
-      // ----------------------------------------------------------
+      final prefs = await SharedPreferences.getInstance();
 
-      final prefs =
-          await SharedPreferences.getInstance();
+      await prefs.setString("full_name", updatedName);
+      await prefs.setString("bio", updatedBio);
+      await prefs.setString("email", updatedEmail);
+      await prefs.setString("phone_number", updatedPhone);
+      await prefs.setString("city", updatedCity);
+      await prefs.setString("gender", gender);
 
-      await prefs.setString(
-        "full_name",
-        updatedName,
-      );
-
-      await prefs.setString(
-        "bio",
-        updatedBio,
-      );
-
-      await prefs.setString(
-        "email",
-        updatedEmail,
-      );
-
-      await prefs.setString(
-        "phone_number",
-        updatedPhone,
-      );
-
-      await prefs.setString(
-        "city",
-        updatedCity,
-      );
-
-      await prefs.setString(
-        "gender",
-        gender,
-      );
-
-      if (uploadedUrl != null &&
-          uploadedUrl.isNotEmpty) {
-        await prefs.setString(
-          "avatar_url",
-          uploadedUrl,
-        );
+      if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+        await prefs.setString("avatar_url", uploadedUrl);
       }
 
-      await prefs.setBool(
-        "profile_completed",
-        true,
-      );
-
-      // ----------------------------------------------------------
-      // IMPORTANT:
-      // UPDATE THIS SAME SCREEN.
-      //
-      // NO Get.back()
-      // NO Get.to()
-      // NO Get.off()
-      // ----------------------------------------------------------
+      await prefs.setBool("profile_completed", true);
 
       if (!mounted) return;
 
@@ -399,16 +335,12 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
         phoneNumber = updatedPhone;
         city = updatedCity;
 
-        if (uploadedUrl != null &&
-            uploadedUrl.isNotEmpty) {
+        if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
           avatarUrl = uploadedUrl;
         }
 
         avatarBytes = null;
-
-        // Exit edit mode on the SAME screen.
         isEditing = false;
-
         saving = false;
       });
 
@@ -422,9 +354,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
         borderRadius: 12,
       );
     } catch (e) {
-      debugPrint(
-        "[ProfileView] Profile update failed: $e",
-      );
+      debugPrint("[ProfileView] Profile update failed: $e");
 
       if (!mounted) return;
 
@@ -442,200 +372,6 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
         borderRadius: 12,
       );
     }
-  }
-
-  // ============================================================
-  // SECTION LABEL
-  // ============================================================
-
-  Widget sectionLabel(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 10,
-        top: 6,
-      ),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textSecondary,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // PROFILE INFO ROW
-  // ============================================================
-
-  Widget infoRow(
-    IconData icon,
-    String label,
-    String value,
-  ) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(
-        bottom: 12,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 15,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: AppColors.primary,
-              size: 21,
-            ),
-          ),
-
-          const SizedBox(width: 14),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  value.isEmpty
-                      ? "Not added"
-                      : value,
-                  maxLines: 2,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color:
-                        AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // SETTINGS TILE
-  // ============================================================
-
-  Widget settingsTile({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-    Color? iconColor,
-    Color? titleColor,
-  }) {
-    final color =
-        iconColor ?? AppColors.primary;
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(
-        bottom: 12,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius:
-              BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 15,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color:
-                        color.withOpacity(0.10),
-                    borderRadius:
-                        BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: 21,
-                  ),
-                ),
-
-                const SizedBox(width: 14),
-
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight:
-                          FontWeight.w600,
-                      color: titleColor ??
-                          AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 14,
-                  color: titleColor ??
-                      AppColors.textSecondary,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   // ============================================================
@@ -659,38 +395,18 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   // ============================================================
 
   Future<void> logout() async {
-    final confirmed =
-        await Get.dialog<bool>(
+    final confirmed = await Get.dialog<bool>(
       AlertDialog(
-        title: const Text(
-          "Logout",
-        ),
-        content: const Text(
-          "Are you sure you want to logout?",
-        ),
+        title: const Text("Logout"),
+        content: const Text("Are you sure you want to logout?"),
         actions: [
           TextButton(
-            onPressed: () {
-              Get.back(
-                result: false,
-              );
-            },
-            child: const Text(
-              "Cancel",
-            ),
+            onPressed: () => Get.back(result: false),
+            child: const Text("Cancel"),
           ),
           TextButton(
-            onPressed: () {
-              Get.back(
-                result: true,
-              );
-            },
-            child: const Text(
-              "Logout",
-              style: TextStyle(
-                color: Colors.red,
-              ),
-            ),
+            onPressed: () => Get.back(result: true),
+            child: const Text("Logout", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -698,53 +414,61 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
     if (confirmed != true) return;
 
-    final prefs =
-        await SharedPreferences.getInstance();
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
 
-    await prefs.remove(
-      "profile_completed",
-    );
+      if (uid != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .update({'isActive': false});
+      }
 
-    await prefs.remove(
-      "is_logged_in",
-    );
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      debugPrint("[ProfileView] Logout Firebase step failed: $e");
+    }
 
-    Get.offAllNamed(
-      AppRoutes.login,
-    );
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove("profile_completed");
+    await prefs.remove("is_logged_in");
+
+    Get.offAllNamed(AppRoutes.login);
   }
 
   // ============================================================
-  // PROFILE IMAGE
+  // PROFILE IMAGE  (letter-avatar fallback, Zomato-style)
   // ============================================================
 
-  Widget profileImage() {
+  Widget profileImage({double radius = 40}) {
     ImageProvider? image;
 
     if (avatarBytes != null) {
-      image = MemoryImage(
-        avatarBytes!,
-      );
-    } else if (avatarUrl != null &&
-        avatarUrl!.isNotEmpty) {
-      image = NetworkImage(
-        avatarUrl!,
-      );
+      image = MemoryImage(avatarBytes!);
+    } else if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      image = NetworkImage(avatarUrl!);
     }
+
+    final initial = name.trim().isNotEmpty
+        ? name.trim()[0].toUpperCase()
+        : "?";
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
         CircleAvatar(
-          radius: 58,
-          backgroundColor:
-              AppColors.primaryTint,
+          radius: radius,
+          backgroundColor: AppColors.primaryTint,
           backgroundImage: image,
           child: image == null
-              ? const Icon(
-                  Icons.person,
-                  size: 58,
-                  color: AppColors.primary,
+              ? Text(
+                  initial,
+                  style: TextStyle(
+                    fontSize: radius * 0.75,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
                 )
               : null,
         ),
@@ -754,23 +478,21 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
             bottom: 0,
             right: -2,
             child: GestureDetector(
-              onTap: saving
-                  ? null
-                  : pickAvatar,
+              onTap: saving ? null : pickAvatar,
               child: Container(
-                width: 38,
-                height: 38,
-                decoration:
-                    const BoxDecoration(
+                width: 34,
+                height: 34,
+                decoration: const BoxDecoration(
                   color: AppColors.primary,
                   shape: BoxShape.circle,
+                  border: Border.fromBorderSide(
+                    BorderSide(color: Colors.white, width: 2),
+                  ),
                 ),
                 child: uploadingAvatar
                     ? const Padding(
-                        padding:
-                            EdgeInsets.all(9),
-                        child:
-                            CircularProgressIndicator(
+                        padding: EdgeInsets.all(8),
+                        child: CircularProgressIndicator(
                           color: Colors.white,
                           strokeWidth: 2,
                         ),
@@ -778,7 +500,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                     : const Icon(
                         Icons.camera_alt_outlined,
                         color: Colors.white,
-                        size: 19,
+                        size: 16,
                       ),
               ),
             ),
@@ -799,80 +521,45 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     return InputDecoration(
       labelText: label,
       hintText: hint,
-
-      prefixIcon: Icon(
-        icon,
-        color: AppColors.primary,
-        size: 21,
-      ),
-
+      prefixIcon: Icon(icon, color: AppColors.primary, size: 21),
       filled: true,
       fillColor: Colors.white,
-
       contentPadding:
-          const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 17,
-      ),
-
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
       border: OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: Colors.grey.shade300,
-        ),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.grey.shade300),
       ),
-
-      enabledBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: Colors.grey.shade300,
-        ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.grey.shade300),
       ),
-
-      focusedBorder:
-          OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(14),
-        borderSide:
-            const BorderSide(
-          color: AppColors.primary,
-          width: 1.5,
-        ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
       ),
     );
   }
 
   // ============================================================
-  // EDIT CONTENT
+  // EDIT CONTENT (unchanged form UI)
   // ============================================================
 
   Widget editContent() {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
-        // --------------------------------------------------------
-        // PROFILE IMAGE
-        // --------------------------------------------------------
-
         Center(
           child: Column(
             children: [
-              profileImage(),
-
+              profileImage(radius: 58),
               const SizedBox(height: 12),
-
               const Text(
                 "Tap to change profile photo",
                 style: TextStyle(
                   fontSize: 13,
                   color: AppColors.primary,
-                  fontWeight:
-                      FontWeight.w600,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -881,149 +568,89 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
         const SizedBox(height: 28),
 
-        // --------------------------------------------------------
-        // BASIC INFORMATION
-        // --------------------------------------------------------
-
-        sectionLabel(
-          "BASIC INFORMATION",
-        ),
+        _formSectionLabel("BASIC INFORMATION"),
 
         TextField(
-          controller:
-              nameController,
-          textCapitalization:
-              TextCapitalization.words,
-          decoration:
-              inputDecoration(
+          controller: nameController,
+          textCapitalization: TextCapitalization.words,
+          decoration: inputDecoration(
             label: "Name",
             hint: "Enter your name",
-            icon:
-                Icons.person_outline,
+            icon: Icons.person_outline,
           ),
         ),
 
         const SizedBox(height: 16),
 
         TextField(
-          controller:
-              bioController,
+          controller: bioController,
           maxLines: 3,
           maxLength: 150,
-          textCapitalization:
-              TextCapitalization.sentences,
-          decoration:
-              inputDecoration(
+          textCapitalization: TextCapitalization.sentences,
+          decoration: inputDecoration(
             label: "Bio",
-            hint:
-                "Tell something about yourself",
-            icon:
-                Icons.info_outline,
+            hint: "Tell something about yourself",
+            icon: Icons.info_outline,
           ),
         ),
 
         const SizedBox(height: 8),
 
-        // --------------------------------------------------------
-        // CONTACT INFORMATION
-        // --------------------------------------------------------
-
-        sectionLabel(
-          "CONTACT INFORMATION",
-        ),
+        _formSectionLabel("CONTACT INFORMATION"),
 
         TextField(
-          controller:
-              emailController,
-          keyboardType:
-              TextInputType.emailAddress,
-          decoration:
-              inputDecoration(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: inputDecoration(
             label: "Email Address",
-            hint:
-                "Enter your email",
-            icon:
-                Icons.email_outlined,
+            hint: "Enter your email",
+            icon: Icons.email_outlined,
           ),
         ),
 
         const SizedBox(height: 16),
 
         TextField(
-          controller:
-              phoneController,
-          keyboardType:
-              TextInputType.phone,
-          decoration:
-              inputDecoration(
+          controller: phoneController,
+          keyboardType: TextInputType.phone,
+          decoration: inputDecoration(
             label: "Phone Number",
-            hint:
-                "Enter your phone number",
-            icon:
-                Icons.phone_outlined,
+            hint: "Enter your phone number",
+            icon: Icons.phone_outlined,
           ),
         ),
 
         const SizedBox(height: 16),
 
         TextField(
-          controller:
-              cityController,
-          textCapitalization:
-              TextCapitalization.words,
-          decoration:
-              inputDecoration(
+          controller: cityController,
+          textCapitalization: TextCapitalization.words,
+          decoration: inputDecoration(
             label: "City",
-            hint:
-                "Enter your city",
-            icon:
-                Icons.location_on_outlined,
+            hint: "Enter your city",
+            icon: Icons.location_on_outlined,
           ),
         ),
 
         const SizedBox(height: 24),
 
-        // --------------------------------------------------------
-        // PERSONAL DETAILS
-        // --------------------------------------------------------
-
-        sectionLabel(
-          "PERSONAL DETAILS",
-        ),
+        _formSectionLabel("PERSONAL DETAILS"),
 
         DropdownButtonFormField<String>(
           value: gender,
-          decoration:
-              inputDecoration(
+          decoration: inputDecoration(
             label: "Gender",
-            icon:
-                Icons.person_outline,
+            icon: Icons.person_outline,
           ),
           items: const [
-            DropdownMenuItem(
-              value: "Male",
-              child:
-                  Text("Male"),
-            ),
-            DropdownMenuItem(
-              value: "Female",
-              child:
-                  Text("Female"),
-            ),
-            DropdownMenuItem(
-              value: "Other",
-              child:
-                  Text("Other"),
-            ),
+            DropdownMenuItem(value: "Male", child: Text("Male")),
+            DropdownMenuItem(value: "Female", child: Text("Female")),
+            DropdownMenuItem(value: "Other", child: Text("Other")),
           ],
           onChanged: saving
               ? null
               : (value) {
-                  if (value ==
-                      null) {
-                    return;
-                  }
-
+                  if (value == null) return;
                   setState(() {
                     gender = value;
                   });
@@ -1032,54 +659,34 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
         const SizedBox(height: 30),
 
-        // --------------------------------------------------------
-        // UPDATE PROFILE
-        // --------------------------------------------------------
-
         SizedBox(
-          width:
-              double.infinity,
+          width: double.infinity,
           height: 56,
-          child:
-              ElevatedButton(
-            onPressed: saving
-                ? null
-                : updateProfile,
-            style:
-                ElevatedButton.styleFrom(
-              backgroundColor:
-                  AppColors.primary,
-              foregroundColor:
-                  Colors.white,
+          child: ElevatedButton(
+            onPressed: saving ? null : updateProfile,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
               elevation: 0,
-              shape:
-                  RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(
-                  14,
-                ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
             child: saving
                 ? const SizedBox(
                     width: 24,
                     height: 24,
-                    child:
-                        CircularProgressIndicator(
-                      color:
-                          Colors.white,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
                       strokeWidth: 2.5,
                     ),
                   )
                 : const Text(
                     "UPDATE PROFILE",
-                    style:
-                        TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
-                      fontWeight:
-                          FontWeight.bold,
-                      letterSpacing:
-                          0.4,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.4,
                     ),
                   ),
           ),
@@ -1087,41 +694,21 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
         const SizedBox(height: 12),
 
-        // --------------------------------------------------------
-        // CANCEL
-        // --------------------------------------------------------
-
         SizedBox(
-          width:
-              double.infinity,
+          width: double.infinity,
           height: 50,
-          child:
-              OutlinedButton(
-            onPressed: saving
-                ? null
-                : cancelEditing,
-            style:
-                OutlinedButton.styleFrom(
-              foregroundColor:
-                  AppColors.textPrimary,
-              side: BorderSide(
-                color:
-                    Colors.grey.shade300,
-              ),
-              shape:
-                  RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(
-                  14,
-                ),
+          child: OutlinedButton(
+            onPressed: saving ? null : cancelEditing,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textPrimary,
+              side: BorderSide(color: Colors.grey.shade300),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
             child: const Text(
               "CANCEL",
-              style: TextStyle(
-                fontWeight:
-                    FontWeight.w600,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         ),
@@ -1131,236 +718,317 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     );
   }
 
+  Widget _formSectionLabel(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, top: 6),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textSecondary,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
   // ============================================================
-  // VIEW CONTENT
+  // ZOMATO-STYLE HELPERS
+  // ============================================================
+
+  /// Section title with a small colored accent bar, like "Your preferences".
+  Widget groupHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 18,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A white rounded card that wraps a set of rows with dividers between
+  /// them — this replaces the old "one shadow-card per field" look.
+  Widget groupCard(List<Widget> rows) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < rows.length; i++) ...[
+            rows[i],
+            if (i != rows.length - 1)
+              Divider(
+                height: 1,
+                thickness: 1,
+                indent: 56,
+                color: Colors.grey.shade200,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// One row inside a group card: icon, label, trailing value + chevron.
+  Widget groupRow({
+    required IconData icon,
+    required String label,
+    String? value,
+    VoidCallback? onTap,
+    Color? iconColor,
+    Color? labelColor,
+    bool showChevron = true,
+  }) {
+    final color = iconColor ?? AppColors.primary;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, size: 22, color: color),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: labelColor ?? AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (value != null)
+                Text(
+                  value.isEmpty ? "Not added" : value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              if (showChevron) ...[
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: labelColor ?? Colors.grey.shade400,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // VIEW CONTENT — Zomato-style layout
   // ============================================================
 
   Widget viewContent() {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
         // --------------------------------------------------------
-        // PROFILE HEADER
+        // TOP CARD: avatar + name + "Edit profile" link
         // --------------------------------------------------------
 
         Container(
-          width:
-              double.infinity,
-          padding:
-              const EdgeInsets.fromLTRB(
-            20,
-            30,
-            20,
-            24,
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
-          decoration:
-              BoxDecoration(
-            gradient:
-                LinearGradient(
-              colors: [
-                AppColors.primary,
-                AppColors.primary
-                    .withOpacity(0.75),
-              ],
-              begin:
-                  Alignment.topLeft,
-              end:
-                  Alignment.bottomRight,
-            ),
-            borderRadius:
-                BorderRadius.circular(
-              24,
-            ),
-          ),
-          child: Column(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-
-              profileImage(),
-
-              const SizedBox(height: 16),
-
-              // NAME
-              Text(
-                name.isEmpty
-                    ? "Guest"
-                    : name,
-                textAlign:
-                    TextAlign.center,
-                style:
-                    const TextStyle(
-                  fontSize: 24,
-                  fontWeight:
-                      FontWeight.bold,
-                  color:
-                      Colors.white,
-                ),
-              ),
-
-              const SizedBox(height: 6),
-
-              // BIO
-              Text(
-                bio.isEmpty
-                    ? "Add your bio"
-                    : bio,
-                textAlign:
-                    TextAlign.center,
-                maxLines: 2,
-                overflow:
-                    TextOverflow.ellipsis,
-                style:
-                    TextStyle(
-                  fontSize: 14,
-                  color: Colors.white
-                      .withOpacity(
-                    0.9,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // --------------------------------------------------
-              // ONLY ONE EDIT BUTTON
-              //
-              // FIX: Material 3's ElevatedButton enforces its own
-              // internal padding + a 48dp minimum tap target height
-              // regardless of the outer SizedBox constraint. That
-              // was fighting the fixed height:44 box below, pushing
-              // the "EDIT" label out of the button's clipped bounds
-              // and rendering it visually cut off at the top.
-              //
-              // padding: EdgeInsets.zero + minimumSize: Size.zero +
-              // tapTargetSize: shrinkWrap + visualDensity: compact
-              // together remove those default constraints so the
-              // button truly respects the SizedBox size and the
-              // label centers correctly.
-              // --------------------------------------------------
-
-              SizedBox(
-                width: 150,
-                height: 44,
-                child:
-                    ElevatedButton.icon(
-                  onPressed:
-                      startEditing,
-                  icon:
-                      const Icon(
-                    Icons.edit_outlined,
-                    size: 18,
-                  ),
-                  label:
-                      const Text(
-                    "EDIT",
-                    style:
-                        TextStyle(
-                      fontWeight:
-                          FontWeight.w700,
-                      fontSize: 14,
-                      height: 1.0,
-                    ),
-                  ),
-                  style:
-                      ElevatedButton.styleFrom(
-                    backgroundColor:
-                        Colors.white,
-                    foregroundColor:
-                        AppColors.primary,
-                    elevation: 0,
-                    padding:
-                        EdgeInsets.zero,
-                    minimumSize:
-                        Size.zero,
-                    tapTargetSize:
-                        MaterialTapTargetSize
-                            .shrinkWrap,
-                    visualDensity:
-                        VisualDensity.compact,
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        12,
+              profileImage(radius: 40),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name.isEmpty ? "Guest" : name,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
                       ),
                     ),
-                  ),
+                    if (bio.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        bio,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: startEditing,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Text(
+                            "Edit profile",
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right,
+                            size: 18,
+                            color: AppColors.primary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
 
-        const SizedBox(height: 26),
+        const SizedBox(height: 24),
 
         // --------------------------------------------------------
         // PERSONAL INFORMATION
         // --------------------------------------------------------
 
-        sectionLabel(
-          "PERSONAL INFORMATION",
-        ),
+        groupHeader("Personal information"),
+        const SizedBox(height: 10),
 
-        infoRow(
-          Icons.email_outlined,
-          "Email",
-          email,
-        ),
+        groupCard([
+          groupRow(
+            icon: Icons.email_outlined,
+            label: "Email",
+            value: email,
+            showChevron: false,
+          ),
+          groupRow(
+            icon: Icons.phone_outlined,
+            label: "Phone Number",
+            value: phoneNumber,
+            showChevron: false,
+          ),
+          groupRow(
+            icon: Icons.location_on_outlined,
+            label: "City",
+            value: city,
+            showChevron: false,
+          ),
+          groupRow(
+            icon: Icons.person_outline,
+            label: "Gender",
+            value: gender,
+            showChevron: false,
+          ),
+        ]),
 
-        infoRow(
-          Icons.phone_outlined,
-          "Phone Number",
-          phoneNumber,
-        ),
+        const SizedBox(height: 24),
 
-        infoRow(
-          Icons.location_on_outlined,
-          "City",
-          city,
-        ),
+        // --------------------------------------------------------
+        // FRIENDS
+        // --------------------------------------------------------
 
-        infoRow(
-          Icons.person_outline,
-          "Gender",
-          gender,
-        ),
+        groupHeader("Friends"),
+        const SizedBox(height: 10),
 
-        const SizedBox(height: 14),
+        groupCard([
+          groupRow(
+            icon: Icons.people_outline,
+            label: "Friends",
+            onTap: () => Get.toNamed(AppRoutes.friends),
+          ),
+        ]),
+
+        const SizedBox(height: 24),
+
+        // --------------------------------------------------------
+        // ORDERS
+        // --------------------------------------------------------
+
+        groupHeader("Orders"),
+        const SizedBox(height: 10),
+
+        groupCard([
+          groupRow(
+            icon: Icons.receipt_long_outlined,
+            label: "My Orders",
+            onTap: () => Get.toNamed(AppRoutes.myOrders),
+          ),
+        ]),
+
+        const SizedBox(height: 24),
 
         // --------------------------------------------------------
         // SETTINGS
         // --------------------------------------------------------
 
-        sectionLabel(
-          "SETTINGS",
-        ),
+        groupHeader("Settings"),
+        const SizedBox(height: 10),
 
-        settingsTile(
-          icon:
-              Icons.settings_outlined,
-          title:
-              "Settings",
-          onTap:
-              openSettings,
-        ),
-
-        // --------------------------------------------------------
-        // LOGOUT
-        // --------------------------------------------------------
-
-        settingsTile(
-          icon:
-              Icons.logout,
-          title:
-              "Logout",
-          iconColor:
-              Colors.red,
-          titleColor:
-              Colors.red,
-          onTap:
-              logout,
-        ),
+        groupCard([
+          groupRow(
+            icon: Icons.settings_outlined,
+            label: "Settings",
+            onTap: openSettings,
+          ),
+          groupRow(
+            icon: Icons.logout,
+            label: "Logout",
+            iconColor: Colors.red,
+            labelColor: Colors.red,
+            onTap: logout,
+          ),
+        ]),
 
         const SizedBox(height: 20),
       ],
@@ -1372,107 +1040,63 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     if (loading) {
       return const Scaffold(
-        backgroundColor:
-            AppColors.background,
-        body: Center(
-          child:
-              CircularProgressIndicator(),
-        ),
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      backgroundColor:
-          AppColors.background,
-
-      // ----------------------------------------------------------
-      // APP BAR
-      // ----------------------------------------------------------
+      backgroundColor: AppColors.background,
 
       appBar: isEditing
           ? AppBar(
-              backgroundColor:
-                  AppColors.background,
+              backgroundColor: AppColors.background,
               elevation: 0,
               centerTitle: true,
-
-              leading:
-                  IconButton(
-                onPressed:
-                    saving
-                        ? null
-                        : cancelEditing,
-                icon:
-                    const Icon(
-                  Icons.arrow_back,
-                ),
-                color:
-                    AppColors.textPrimary,
+              leading: IconButton(
+                onPressed: saving ? null : cancelEditing,
+                icon: const Icon(Icons.arrow_back),
+                color: AppColors.textPrimary,
               ),
-
-              title:
-                  const Text(
+              title: const Text(
                 "Edit Account",
-                style:
-                    TextStyle(
-                  color:
-                      AppColors.textPrimary,
-                  fontWeight:
-                      FontWeight.bold,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
                   fontSize: 20,
                 ),
               ),
             )
-          : null,
-
-      // ----------------------------------------------------------
-      // BODY
-      // ----------------------------------------------------------
-
-      body: SafeArea(
-        child:
-            RefreshIndicator(
-          onRefresh:
-              loadProfile,
-          child:
-              SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding:
-                const EdgeInsets.fromLTRB(
-              20,
-              10,
-              20,
-              30,
+          : AppBar(
+              backgroundColor: AppColors.background,
+              elevation: 0,
+              centerTitle: true,
+              automaticallyImplyLeading: false,
+              title: const Text(
+                "Profile",
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              ),
             ),
 
-            // THIS IS THE IMPORTANT PART:
-            //
-            // Same screen.
-            //
-            // isEditing == false
-            //     => Profile view
-            //
-            // isEditing == true
-            //     => Edit form
-            //
-            child: isEditing
-                ? editContent()
-                : viewContent(),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: loadProfile,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
+            child: isEditing ? editContent() : viewContent(),
           ),
         ),
       ),
 
-      // ----------------------------------------------------------
-      // BOTTOM NAVIGATION
-      // ----------------------------------------------------------
-
       bottomNavigationBar: null,
     );
-  } 
+  }
 }

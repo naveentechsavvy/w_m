@@ -40,20 +40,21 @@ class MyMeetupsController extends GetxController {
   int pendingRequestCountFor(String meetupId) =>
       joinRequestsController.pendingIncomingForMeetup(meetupId).length;
 
-  /// Cancels a meetup the current user created. Only intended to be
-  /// called when the meetup has zero joined participants — the screen
-  /// gates the button on that, this just does the removal and
-  /// optimistically updates the local list so the UI reflects it
-  /// immediately instead of waiting for a full reload.
-  Future<void> cancelMeetup(String meetupId) async {
+  /// Cancels a meetup the current user created. Sets the meetup's
+  /// `cancelled` flag (and now a `cancelReason`) in Firestore — soft
+  /// cancel, the doc stays so participants' join history isn't wiped —
+  /// and reloads the created list so the card updates to show a
+  /// "Cancelled" state instead of disappearing from the tab.
+  Future<void> cancelMeetup(String meetupId, {required String reason}) async {
     try {
-      await experienceRepository.cancelMeetup(meetupId);
-      _createdMeetups.removeWhere((e) => e.id == meetupId);
+      await experienceRepository.cancelMeetup(meetupId, reason: reason);
+      await loadCreatedMeetups(); // refresh so the card shows as cancelled, not removed
     } catch (_) {
       Get.snackbar(
         "Couldn't cancel",
         "Something went wrong. Please try again.",
       );
+      rethrow;
     }
   }
 
@@ -68,20 +69,26 @@ class MyMeetupsController extends GetxController {
 
   // ===========================
   // Upcoming tab
+  // A meetup stays "Upcoming" for its entire duration — it only
+  // moves to "Completed" once its end time has passed. Uses
+  // effectiveEndDate so older meetups without a saved endDate
+  // (2-hour default) still work correctly.
   // ===========================
   List<JoinRequest> get upcoming => joinRequestsController.myRequests
       .where((r) =>
           r.status == JoinRequestStatus.approved &&
-          r.meetup.date.isAfter(DateTime.now()))
+          r.meetup.effectiveEndDate.isAfter(DateTime.now()))
       .toList();
 
   // ===========================
   // Completed tab
+  // Moves here once the meetup's end time (not start time) has
+  // passed.
   // ===========================
   List<JoinRequest> get completed => joinRequestsController.myRequests
       .where((r) =>
           r.status == JoinRequestStatus.approved &&
-          r.meetup.date.isBefore(DateTime.now()))
+          r.meetup.effectiveEndDate.isBefore(DateTime.now()))
       .toList();
 
   // ===========================

@@ -37,6 +37,13 @@ enum ChatType {
 /// roomId) so we can query "all chats belonging to meetup X" later,
 /// e.g. for moderation or admin tooling, without parsing roomId strings.
 ///
+/// [participants] is only set for private/organizer messages — the two
+/// uids allowed to read that thread. Null for group chat, since group
+/// membership isn't enforced at the message level (see security rules).
+/// Firestore security rules use this field to restrict reads to just the
+/// two people in a 1:1 thread; without it, any signed-in user could read
+/// any message directly from the database, bypassing the app's UI.
+///
 /// [isDeleted] is a soft-delete flag, not a removed doc — the doc stays
 /// in place (so stream ordering/pagination never shifts) and [text] is
 /// cleared. The UI renders a placeholder for deleted messages instead of
@@ -54,6 +61,7 @@ class Message {
   final bool isEdited;
   final bool isDeleted;
   final DateTime? editedAt;
+  final List<String>? participants;
 
   Message({
     required this.id,
@@ -67,6 +75,7 @@ class Message {
     this.isEdited = false,
     this.isDeleted = false,
     this.editedAt,
+    this.participants,
   });
 
   Map<String, dynamic> toMap() {
@@ -81,6 +90,7 @@ class Message {
       'isEdited': isEdited,
       'isDeleted': isDeleted,
       'editedAt': editedAt != null ? Timestamp.fromDate(editedAt!) : null,
+      if (participants != null) 'participants': participants,
     };
   }
 
@@ -103,6 +113,9 @@ class Message {
       isDeleted: map['isDeleted'] as bool? ?? false,
       editedAt: map['editedAt'] != null
           ? (map['editedAt'] as Timestamp).toDate()
+          : null,
+      participants: map['participants'] != null
+          ? List<String>.from(map['participants'] as List)
           : null,
     );
   }

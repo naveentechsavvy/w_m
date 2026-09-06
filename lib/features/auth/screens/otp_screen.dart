@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -23,6 +24,9 @@ class _OtpScreenState extends State<OtpScreen>
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
 
+  Timer? _resendTimer;
+  int _secondsLeft = 30;
+
   @override
   void initState() {
     super.initState();
@@ -36,11 +40,31 @@ class _OtpScreenState extends State<OtpScreen>
       begin: const Offset(0, 0.08),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
+
+    _startResendTimer();
+  }
+
+  void _startResendTimer() {
+    _secondsLeft = 30;
+    _resendTimer?.cancel();
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_secondsLeft == 0) {
+        timer.cancel();
+      } else {
+        setState(() => _secondsLeft--);
+      }
+    });
+  }
+
+  void _handleResend() {
+    controller.sendOtp();
+    _startResendTimer();
   }
 
   @override
   void dispose() {
     _animController.dispose();
+    _resendTimer?.cancel();
     super.dispose();
   }
 
@@ -63,16 +87,27 @@ class _OtpScreenState extends State<OtpScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SectionTitle(
+                  SectionTitle(
                     title: "Verify OTP",
-                    subtitle: "Enter the 6-digit code sent to your mobile.",
+                    subtitle:
+                        "Enter the 6-digit code sent to ${controller.phoneController.text}",
                   ),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 32),
 
-                  _OtpBoxesInput(
-                    controller: controller.otpController,
-                    length: 6,
+                  // Capped width so boxes stay grouped together
+                  // instead of stretching edge-to-edge on wide screens.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    child: _OtpBoxesInput(
+                      controller: controller.otpController,
+                      length: 6,
+                      onCompleted: () {
+                        if (!controller.loading.value) {
+                          controller.verifyOtp();
+                        }
+                      },
+                    ),
                   ),
 
                   const SizedBox(height: 32),
@@ -88,19 +123,26 @@ class _OtpScreenState extends State<OtpScreen>
                   const SizedBox(height: 16),
 
                   Center(
-                    child: TextButton(
-                      onPressed: controller.sendOtp,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                      ),
-                      child: Text(
-                        "Resend OTP",
-                        style: AppTextStyles.body.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                    child: _secondsLeft > 0
+                        ? Text(
+                            "Resend OTP in ${_secondsLeft}s",
+                            style: AppTextStyles.body.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          )
+                        : TextButton(
+                            onPressed: _handleResend,
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.primary,
+                            ),
+                            child: Text(
+                              "Resend OTP",
+                              style: AppTextStyles.body.copyWith(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -118,17 +160,16 @@ class _OtpScreenState extends State<OtpScreen>
 /// (controller.otpController) — so AuthController.verifyOtp() keeps
 /// working unchanged; this widget only changes how input looks, not
 /// how it's stored.
-///
-/// Built without a third-party pin-input package (none is in
-/// pubspec.yaml) — a real TextField is stacked underneath the boxes
-/// and made invisible, so the OS keyboard, autofill, and cursor
-/// behavior all still work normally; the boxes just re-render the
-/// current text on every keystroke via a listener.
 class _OtpBoxesInput extends StatefulWidget {
   final TextEditingController controller;
   final int length;
+  final VoidCallback? onCompleted;
 
-  const _OtpBoxesInput({required this.controller, required this.length});
+  const _OtpBoxesInput({
+    required this.controller,
+    required this.length,
+    this.onCompleted,
+  });
 
   @override
   State<_OtpBoxesInput> createState() => _OtpBoxesInputState();
@@ -151,6 +192,9 @@ class _OtpBoxesInputState extends State<_OtpBoxesInput> {
 
   void _onChanged() {
     setState(() => _text = widget.controller.text);
+    if (_text.length == widget.length) {
+      widget.onCompleted?.call();
+    }
   }
 
   @override
@@ -199,8 +243,6 @@ class _OtpBoxesInputState extends State<_OtpBoxesInput> {
             }),
           ),
 
-          // Real, invisible TextField layered on top to actually
-          // capture keyboard input and drive the boxes above.
           Opacity(
             opacity: 0,
             child: TextField(

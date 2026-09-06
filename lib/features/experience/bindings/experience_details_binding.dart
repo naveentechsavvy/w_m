@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 
 import '../controllers/experience_controller.dart';
 import '../controllers/join_requests_controller.dart';
+import '../../friends/controllers/friend_request_controller.dart';
 
 class ExperienceDetailsBinding extends Bindings {
   @override
@@ -11,6 +12,9 @@ class ExperienceDetailsBinding extends Bindings {
     }
     if (!Get.isRegistered<ExperienceController>()) {
       Get.lazyPut<ExperienceController>(() => ExperienceController());
+    }
+    if (!Get.isRegistered<FriendRequestController>()) {
+      Get.lazyPut<FriendRequestController>(() => FriendRequestController());
     }
   }
 }

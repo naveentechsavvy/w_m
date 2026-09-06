@@ -87,12 +87,15 @@ class MyMeetupsScreen extends StatelessWidget {
       itemBuilder: (context, index) {
         final meetup = controller.created[index];
         final pendingCount = controller.pendingRequestCountFor(meetup.id);
-        final canCancel = meetup.joined == 0;
+        final isCancelled = meetup.cancelled;
+        final canCancel = !isCancelled && meetup.joined == 0;
 
         return MeetupStatusCard(
           experience: meetup,
-          statusLabel: pendingCount > 0 ? "$pendingCount Pending" : null,
-          statusColor: AppColors.warning,
+          statusLabel: isCancelled
+              ? "Cancelled"
+              : (pendingCount > 0 ? "$pendingCount Pending" : null),
+          statusColor: isCancelled ? Colors.red : AppColors.warning,
           actionLabel: canCancel ? "Cancel" : null,
           onActionTap: canCancel
               ? () => _confirmCancel(context, controller, meetup.id)
@@ -107,28 +110,95 @@ class MyMeetupsScreen extends StatelessWidget {
     MyMeetupsController controller,
     String meetupId,
   ) async {
-    final confirmed = await showDialog<bool>(
+    final reasonController = TextEditingController();
+    String? errorText;
+
+    final reason = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Cancel this meetup?"),
-        content: const Text(
-          "This will permanently remove the meetup. This can't be undone.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(result: false),
-            child: const Text("No"),
-          ),
-          TextButton(
-            onPressed: () => Get.back(result: true),
-            child: const Text("Yes, Cancel"),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: const Text("Cancel this meetup?"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "This will permanently remove the meetup. This can't be undone.",
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: reasonController,
+                    autofocus: true,
+                    maxLines: 3,
+                    minLines: 2,
+                    maxLength: 200,
+                    decoration: InputDecoration(
+                      labelText: "Reason for cancelling",
+                      hintText: "e.g. Not enough people joined",
+                      errorText: errorText,
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (_) {
+                      if (errorText != null) {
+                        setState(() => errorText = null);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("No"),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final text = reasonController.text.trim();
+                    if (text.isEmpty) {
+                      setState(() => errorText = "Please enter a reason");
+                      return;
+                    }
+                    Navigator.pop(ctx, text);
+                  },
+                  child: const Text(
+                    "Yes, Cancel",
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
 
-    if (confirmed == true) {
-      await controller.cancelMeetup(meetupId);
+    reasonController.dispose();
+
+    if (reason == null || reason.isEmpty) return;
+
+    try {
+      await controller.cancelMeetup(meetupId, reason: reason);
+      Get.snackbar(
+        "Meetup Cancelled",
+        "Your meetup has been cancelled.",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.primary,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+      );
+    } catch (e) {
+      Get.snackbar(
+        "Couldn't Cancel",
+        "Something went wrong. Please try again.",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+      );
     }
   }
 

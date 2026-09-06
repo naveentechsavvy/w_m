@@ -46,7 +46,7 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.arrow_back_ios_new, size: 22),
-                        color: AppColors.textPrimary,
+                        color: AppColors.primary,
                         tooltip: "Back to Choice",
                         onPressed: () => Get.offNamed(AppRoutes.choice),
                       ),
@@ -54,19 +54,19 @@ class HomeScreen extends StatelessWidget {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.groups_outlined, size: 26),
-                            color: AppColors.textPrimary,
+                            color: AppColors.primary,
                             tooltip: "My Meetups",
                             onPressed: () => Get.toNamed(AppRoutes.myMeetups),
                           ),
                           IconButton(
                             icon: const Icon(Icons.notifications_none, size: 26),
-                            color: AppColors.textPrimary,
+                            color: AppColors.primary,
                             tooltip: "Notifications",
                             onPressed: () => Get.toNamed(AppRoutes.notifications),
                           ),
                           IconButton(
                             icon: const Icon(Icons.account_circle_outlined, size: 26),
-                            color: AppColors.textPrimary,
+                            color: AppColors.primary,
                             tooltip: "Profile",
                             onPressed: () => Get.toNamed(AppRoutes.profile),
                           ),

@@ -55,11 +55,15 @@ class NotificationsScreen extends StatelessWidget {
                 item: item,
                 onApprove: item.isJoinRequest
                     ? () => controller.approve(item.joinRequest!.id)
-                    : null,
+                    : item.isFriendRequest
+                        ? () => controller.acceptFriend(item.friendRequest!.request.id)
+                        : null,
                 onReject: item.isJoinRequest
                     ? () => controller.reject(item.joinRequest!.id)
-                    : null,
-                onTap: !item.isJoinRequest
+                    : item.isFriendRequest
+                        ? () => controller.rejectFriend(item.friendRequest!.request.id)
+                        : null,
+                onTap: (!item.isJoinRequest && !item.isFriendRequest)
                     ? () => controller.markAsRead(item.notification!.id)
                     : null,
               );

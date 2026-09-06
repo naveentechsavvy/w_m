@@ -5,7 +5,7 @@ class ExperienceRepository {
   final ExperienceDataSource datasource = ExperienceDataSource();
 
   Future<String> createMeetup(Experience experience) =>
-      datasource.createMeetup(experience);
+    datasource.createMeetup(experience);
 
   Future<List<Experience>> getAllMeetups() => datasource.getAllMeetups();
 
@@ -15,5 +15,12 @@ class ExperienceRepository {
   Future<Experience?> getMeetupById(String id) =>
       datasource.getMeetupById(id);
 
-  Future<void> cancelMeetup(String id) => datasource.deleteMeetup(id);
+  /// Soft-cancels a meetup: marks it cancelled (with the organizer's
+  /// reason) instead of deleting the document, so it can still appear
+  /// in "Cancelled" views on both the app and the website.
+  Future<void> cancelMeetup(String id, {required String reason}) =>
+      datasource.updateMeetup(id, {
+        'cancelled': true,
+        'cancelReason': reason,
+      });
 }

@@ -34,16 +34,6 @@ class ExploreScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              const Text(
-                "Naveen",
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 25),
-
               ClipRRect(
                 borderRadius: BorderRadius.circular(22),
                 child: Image.asset(

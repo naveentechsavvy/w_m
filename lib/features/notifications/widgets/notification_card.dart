@@ -19,8 +19,10 @@ class NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isActionable = item.isJoinRequest || item.isFriendRequest;
+
     return GestureDetector(
-      onTap: item.isJoinRequest ? null : onTap,
+      onTap: isActionable ? null : onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(16),
@@ -35,7 +37,11 @@ class NotificationCard extends StatelessWidget {
             ),
           ],
         ),
-        child: item.isJoinRequest ? _buildJoinRequest() : _buildInfo(),
+        child: item.isJoinRequest
+            ? _buildJoinRequest()
+            : item.isFriendRequest
+                ? _buildFriendRequest()
+                : _buildInfo(),
       ),
     );
   }
@@ -78,6 +84,91 @@ class NotificationCard extends StatelessWidget {
                   Text(
                     "wants to join \"${request.meetup.title}\"",
                     style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: onReject,
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppColors.error),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  "Ignore",
+                  style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: onApprove,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  "Accept",
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFriendRequest() {
+    final fr = item.friendRequest!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: AppColors.primaryTint,
+              child: Text(
+                fr.senderName.isNotEmpty ? fr.senderName[0].toUpperCase() : "?",
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fr.senderName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    "sent you a friend request",
+                    style: TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 13,
                     ),

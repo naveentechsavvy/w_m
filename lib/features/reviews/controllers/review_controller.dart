@@ -69,12 +69,25 @@ class ReviewController extends GetxController {
 
   /// Eligibility: must have joined (is in participants) and the
   /// meetup date must be in the past, and no existing review yet.
+  ///
+  /// FIX: `alreadyReviewed.value` is now read unconditionally at the
+  /// top of this method, before any early return. Previously it was
+  /// only reached when `uid != null`, so when this method was called
+  /// from inside an `Obx(() => ...)` while the user wasn't logged in
+  /// (or auth hadn't finished initializing yet), the early `return
+  /// false;` for the null-uid case meant NO observable was read
+  /// during that build. GetX's `Obx` has nothing to subscribe to in
+  /// that case and throws:
+  /// "[Get] the improper use of a GetX has been detected."
+  /// Reading the .obs value first guarantees Obx always registers a
+  /// dependency, regardless of which branch runs afterward.
   bool canReview(Experience meetup) {
+    final reviewed = alreadyReviewed.value; // always read first
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return false;
     final isParticipant = meetup.participants.contains(uid);
     final isCompleted = meetup.date.isBefore(DateTime.now());
-    return isParticipant && isCompleted && !alreadyReviewed.value;
+    return isParticipant && isCompleted && !reviewed;
   }
 
   Future<void> pickPhoto() async {

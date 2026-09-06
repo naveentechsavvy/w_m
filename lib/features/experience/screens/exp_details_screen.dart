@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -30,6 +32,13 @@ class ExpDetailsScreen extends StatelessWidget {
     }
   }
 
+  String _formatTime(DateTime dt) {
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? "PM" : "AM";
+    return "$hour:$minute $period";
+  }
+
   @override
   Widget build(BuildContext context) {
     final Experience experience = Get.arguments as Experience;
@@ -42,11 +51,6 @@ class ExpDetailsScreen extends StatelessWidget {
 
     final String currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-    // FIX: previously compared experience.organizerName == "You", which
-    // is a display-label default, not an identity check. Every viewer
-    // saw isMine == true whenever organizerName happened to be "You",
-    // which hid the Join button for everyone, not just the real owner.
-    // createdBy stores the actual creator's uid, so compare against that.
     final bool isMine = experience.createdBy.isNotEmpty &&
         experience.createdBy == currentUid;
 
@@ -133,9 +137,6 @@ class ExpDetailsScreen extends StatelessWidget {
 
                     const SizedBox(height: 8),
 
-                    // Location row — shows distance (when GPS is
-                    // available) and a "Get Directions" button (when
-                    // the meetup has coordinates saved).
                     Row(
                       children: [
                         const Icon(Icons.location_on_outlined,
@@ -175,6 +176,7 @@ class ExpDetailsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
 
+                    // Date + start–end time row.
                     Row(
                       children: [
                         const Icon(Icons.calendar_today_outlined,
@@ -184,7 +186,20 @@ class ExpDetailsScreen extends StatelessWidget {
                           "${experience.date.day}/${experience.date.month}/${experience.date.year}",
                           style: const TextStyle(color: AppColors.textSecondary),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          "· ${_formatTime(experience.date)} – ${_formatTime(experience.effectiveEndDate)}",
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    Row(
+                      children: [
                         const Icon(Icons.person_outline,
                             size: 16, color: AppColors.primary),
                         const SizedBox(width: 6),
@@ -204,11 +219,24 @@ class ExpDetailsScreen extends StatelessWidget {
                           Icons.currency_rupee,
                         ),
                         const SizedBox(width: 12),
-                        _statPill(
-                          "${experience.joined}/${experience.seats} Joined",
-                          Icons.groups_outlined,
+                        GestureDetector(
+                          onTap: () => Get.toNamed(
+                            AppRoutes.participants,
+                            arguments: experience,
+                          ),
+                          child: _statPill(
+                            "${experience.joined}/${experience.seats} Joined",
+                            Icons.groups_outlined,
+                          ),
                         ),
                       ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    _MeetupCountdown(
+                      startDate: experience.date,
+                      endDate: experience.effectiveEndDate,
                     ),
 
                     const SizedBox(height: 24),
@@ -261,9 +289,6 @@ class ExpDetailsScreen extends StatelessWidget {
                             joinRequestsController.myRequestFor(experience.id);
                         final status = existing?.status;
 
-                        // FIX: previously only handled pending vs
-                        // not-requested. Now covers all 4 states so the
-                        // requester sees the real status of their request.
                         final bool isPending =
                             status == JoinRequestStatus.pending;
                         final bool isApproved =
@@ -272,11 +297,6 @@ class ExpDetailsScreen extends StatelessWidget {
                         final bool isRejected =
                             status == JoinRequestStatus.rejected;
 
-                        // Only these states block re-tapping. A rejected
-                        // or cancelled request should allow requesting again
-                        // if you want retry to be possible — currently
-                        // rejected is shown as a final disabled state per
-                        // your requirement ("should show rejected").
                         final bool disabled =
                             isPending || isApproved || isRejected;
 
@@ -333,9 +353,6 @@ class ExpDetailsScreen extends StatelessWidget {
 
                     const SizedBox(height: 32),
 
-                    // --------------------------------------------------
-                    // REVIEWS SECTION
-                    // --------------------------------------------------
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -442,6 +459,103 @@ class ExpDetailsScreen extends StatelessWidget {
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shows a live countdown between [startDate] and [endDate].
+///
+/// - Hidden entirely if more than 1 hour from start.
+/// - "Starts in Xh Ym" between 1 hour and 30 minutes before start.
+/// - "Starts in X min" inside the last 30 minutes before start.
+/// - "Happening now" while between start and end.
+/// - "This meetup has ended" once past the end time.
+class _MeetupCountdown extends StatefulWidget {
+  final DateTime startDate;
+  final DateTime endDate;
+  const _MeetupCountdown({required this.startDate, required this.endDate});
+
+  @override
+  State<_MeetupCountdown> createState() => _MeetupCountdownState();
+}
+
+class _MeetupCountdownState extends State<_MeetupCountdown> {
+  Timer? _timer;
+  DateTime _now = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final untilStart = widget.startDate.difference(_now);
+    final untilEnd = widget.endDate.difference(_now);
+
+    final bool notStartedYet = untilStart.isNegative == false;
+    final bool isOngoing = untilStart.isNegative && !untilEnd.isNegative;
+    final bool hasEnded = untilEnd.isNegative;
+
+    // Only show the card within 1 hour of start, or while ongoing/ended.
+    final bool withinWindow = isOngoing ||
+        hasEnded ||
+        (notStartedYet && untilStart <= const Duration(hours: 1));
+
+    if (!withinWindow) return const SizedBox.shrink();
+
+    String label;
+    Color bgColor;
+    Color fgColor;
+
+    if (hasEnded) {
+      label = "This meetup has ended";
+      bgColor = AppColors.textLight;
+      fgColor = AppColors.textSecondary;
+    } else if (isOngoing) {
+      label = "Happening now";
+      bgColor = AppColors.primaryTint;
+      fgColor = AppColors.primary;
+    } else if (untilStart <= const Duration(minutes: 30)) {
+      final minutes = untilStart.inMinutes;
+      label = minutes <= 0 ? "Starting any moment" : "Starts in $minutes min";
+      bgColor = AppColors.primaryTint;
+      fgColor = AppColors.primary;
+    } else {
+      final minutes = untilStart.inMinutes % 60;
+      label = "Starts in ${untilStart.inHours}h ${minutes}m";
+      bgColor = AppColors.primaryTint;
+      fgColor = AppColors.primary;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.timer_outlined, color: fgColor, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(color: fgColor, fontWeight: FontWeight.bold),
           ),
         ],
       ),

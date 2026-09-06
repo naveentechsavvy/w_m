@@ -200,14 +200,15 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   final controller = Get.find<ExperienceController>();
 
   final titleController = TextEditingController();
+  final categoryController = TextEditingController(text: "Adventure");
   final descriptionController = TextEditingController();
   final locationController = TextEditingController();
   final priceController = TextEditingController();
   final seatsController = TextEditingController();
 
-  String selectedCategory = "Adventure";
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
+  TimeOfDay? selectedEndTime;
   bool isPrivate = false;
 
   Uint8List? bannerBytes;
@@ -224,6 +225,17 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     "Cycling",
     "Food",
   ];
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    categoryController.dispose();
+    descriptionController.dispose();
+    locationController.dispose();
+    priceController.dispose();
+    seatsController.dispose();
+    super.dispose();
+  }
 
   Future<void> pickBanner() async {
     final picker = ImagePicker();
@@ -267,6 +279,18 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     }
   }
 
+  Future<void> pickEndTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: selectedTime ?? TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedEndTime = picked;
+      });
+    }
+  }
+
   // ===========================
   // Location picker (bottom sheet) — hosts _LocationPickerSheet, its
   // own StatefulWidget, so async GPS/permission calls can't crash
@@ -303,6 +327,10 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       Get.snackbar("Missing Title", "Please enter a meetup title");
       return false;
     }
+    if (categoryController.text.trim().isEmpty) {
+      Get.snackbar("Missing Category", "Please enter a category");
+      return false;
+    }
     if (locationController.text.trim().isEmpty) {
       Get.snackbar("Missing Location", "Please set a location");
       return false;
@@ -312,7 +340,11 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       return false;
     }
     if (selectedTime == null) {
-      Get.snackbar("Missing Time", "Please select a time");
+      Get.snackbar("Missing Time", "Please select a start time");
+      return false;
+    }
+    if (selectedEndTime == null) {
+      Get.snackbar("Missing End Time", "Please select an end time");
       return false;
     }
     if (priceController.text.trim().isEmpty ||
@@ -343,6 +375,22 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       selectedTime!.minute,
     );
 
+    final combinedEndDate = DateTime(
+      selectedDate!.year,
+      selectedDate!.month,
+      selectedDate!.day,
+      selectedEndTime!.hour,
+      selectedEndTime!.minute,
+    );
+
+    if (!combinedEndDate.isAfter(combinedDate)) {
+      Get.snackbar("Invalid End Time", "End time must be after the start time");
+      setState(() {
+        saving = false;
+      });
+      return;
+    }
+
     // FIX: creator identity was never being recorded. createdBy stayed
     // at its default '' and organizerName stayed at its default "You"
     // for every meetup, no matter who actually created it — which is
@@ -357,10 +405,11 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     final newExperience = Experience(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: titleController.text.trim(),
-      category: selectedCategory,
+      category: categoryController.text.trim(),
       location: locationController.text.trim(),
       image: "assets/experiences/trek.webp", // placeholder until real upload wired
       date: combinedDate,
+      endDate: combinedEndDate,
       price: double.parse(priceController.text.trim()),
       joined: 0,
       seats: int.parse(seatsController.text.trim()),
@@ -520,17 +569,44 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
             ),
 
             fieldLabel("CATEGORY"),
-            DropdownButtonFormField<String>(
-              initialValue: selectedCategory,
-              decoration: fieldDecoration("Select category"),
-              items: categoryOptions
-                  .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                  .toList(),
-              onChanged: (value) {
-                setState(() {
-                  selectedCategory = value!;
-                });
-              },
+            TextField(
+              controller: categoryController,
+              onChanged: (_) => setState(() {}),
+              decoration: fieldDecoration("e.g. Adventure, Coffee, Trekking..."),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: categoryOptions.map((c) {
+                final bool isSelected =
+                    categoryController.text.trim().toLowerCase() == c.toLowerCase();
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      categoryController.text = c;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : Colors.grey.shade300,
+                      ),
+                    ),
+                    child: Text(
+                      c,
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
 
             fieldLabel("DESCRIPTION"),
@@ -603,7 +679,11 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
                 Expanded(
                   child: GestureDetector(
                     onTap: pickTime,
@@ -621,8 +701,35 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                           const SizedBox(width: 10),
                           Text(
                             selectedTime == null
-                                ? "Select time"
+                                ? "Start time"
                                 : selectedTime!.format(context),
+                            style: const TextStyle(color: AppColors.textPrimary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: pickEndTime,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.access_time_filled,
+                              size: 18, color: AppColors.primary),
+                          const SizedBox(width: 10),
+                          Text(
+                            selectedEndTime == null
+                                ? "End time"
+                                : selectedEndTime!.format(context),
                             style: const TextStyle(color: AppColors.textPrimary),
                           ),
                         ],

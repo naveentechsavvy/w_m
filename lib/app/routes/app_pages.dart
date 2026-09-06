@@ -4,6 +4,7 @@ import '../../features/auth/screens/splash_screen.dart';
 import 'app_routes.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/otp_screen.dart';
+import '../../features/auth/screens/name_entry_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/home/screens/choice_screen.dart';
 import '../../features/experience/screens/explore_screen.dart';
@@ -19,6 +20,14 @@ import '../../features/experience/bindings/experience_details_binding.dart';
 import '../../features/reviews/screens/reviews_screen.dart';
 import '../../features/reviews/screens/write_review_screen.dart';
 import '../../features/experience/screens/premium_plan_screen.dart';
+import '../../features/friends/screens/friends_screen.dart';
+import '../../features/experience/screens/participants_screen.dart';
+import '../../features/food/screens/food_screen.dart';
+import '../../features/food/screens/cart_screen.dart';
+import '../../features/food/screens/address_screen.dart';
+import '../../features/food/screens/order_success_screen.dart';
+import '../../features/food/screens/order_tracking_screen.dart';
+import '../../features/food/screens/my_orders_screen.dart';
 
 class AppPages {
   static final pages = [
@@ -91,6 +100,42 @@ class AppPages {
     GetPage(
       name: AppRoutes.premiumPlan,
       page: () => const PremiumPlanScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.friends,
+      page: () => const FriendsScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.participants,
+      page: () => const ParticipantsScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.nameEntry,
+      page: () => const NameEntryScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.food,
+      page: () => const FoodScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.cart,
+      page: () => const CartScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.deliveryAddress,
+      page: () => const AddressScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.orderSuccess,
+      page: () => const OrderSuccessScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.orderTracking,
+      page: () => const OrderTrackingScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.myOrders,
+      page: () => const MyOrdersScreen(),
     ),
   ];
 }

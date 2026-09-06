@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../../core/widgets/app_logo.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/primary_button.dart';
-import '../../../core/widgets/section_title.dart';
 import '../controllers/auth_controller.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -24,18 +22,14 @@ class LoginScreen extends StatelessWidget {
 
             children: [
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 60),
 
-              const Center(
-                child: AppLogo(size: 100),
-              ),
-
-              const SizedBox(height: 40),
-
-              const SectionTitle(
-                title: "Welcome Back",
-                subtitle:
-                    "Every weekend has a story. Let's start yours.",
+              const Text(
+                "Log in or sign up",
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
 
               const SizedBox(height: 40),

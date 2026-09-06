@@ -91,6 +91,11 @@ class ChatController extends GetxController {
   StreamSubscription<List<Message>>? _sub;
   String _senderName = 'You';
 
+  /// Guards the one-shot auto-retry in _subscribeToMessages() so a
+  /// persistent error (e.g. genuinely not a participant) doesn't loop
+  /// forever — only the very first failure gets retried.
+  bool _hasRetriedSubscription = false;
+
   String? get currentUid => FirebaseAuth.instance.currentUser?.uid;
 
   /// Title shown in the app bar: meetup title for group chat, the other
@@ -144,6 +149,20 @@ class ChatController extends GetxController {
 
   Future<void> _init() async {
     await _loadSenderName();
+
+    // Wait for Firebase Auth to report a confirmed user before opening
+    // the messages stream. Firing the subscription immediately here can
+    // race the ID token attaching to the very first Firestore connection,
+    // which makes that first attempt get rejected with permission-denied
+    // even for a legitimate participant — closing and reopening the
+    // screen "fixed" it before only because that created a brand new
+    // subscription after auth had already settled.
+    if (FirebaseAuth.instance.currentUser == null) {
+      await FirebaseAuth.instance.authStateChanges().firstWhere(
+            (user) => user != null,
+          );
+    }
+
     _subscribeToMessages();
     isReady.value = true;
   }
@@ -163,7 +182,13 @@ class ChatController extends GetxController {
   }
 
   void _subscribeToMessages() {
-    _sub = repository.streamMessages(roomId).listen(
+    _sub = repository
+        .streamMessages(
+      roomId: roomId,
+      chatType: chatType,
+      currentUid: currentUid ?? '',
+    )
+        .listen(
       (list) {
         messages.assignAll(list);
       },
@@ -172,6 +197,18 @@ class ChatController extends GetxController {
         // composite index on roomId + sentAt) fails silently and the
         // UI is stuck showing "No messages yet" with no indication why.
         debugPrint('Chat stream error: $error');
+
+        // One-shot auto-retry: if the very first subscription attempt
+        // lost the auth-token race above (or hit any other transient
+        // error), try again once automatically instead of leaving the
+        // user stuck until they manually close and reopen the screen.
+        if (!_hasRetriedSubscription) {
+          _hasRetriedSubscription = true;
+          _sub?.cancel();
+          _subscribeToMessages();
+          return;
+        }
+
         Get.snackbar(
           'Chat error',
           'Could not load messages. Please try again.',
@@ -247,6 +284,7 @@ class ChatController extends GetxController {
         chatType: chatType,
         senderName: _senderName,
         text: text,
+        otherUserId: otherUserId,
       );
       textController.clear();
     } catch (e) {

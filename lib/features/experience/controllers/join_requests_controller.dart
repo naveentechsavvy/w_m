@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,10 +18,28 @@ class JoinRequestsController extends GetxController {
   final RxList<JoinRequest> requests = <JoinRequest>[].obs;
   RxBool isLoading = false.obs;
 
+  // Outgoing requests (mine) are cheap and don't need to be live — kept
+  // as a plain snapshot, refreshed by loadAll().
+  List<JoinRequest> _outgoing = [];
+
+  // FIX: incoming requests (for meetups I organize) used to be fetched
+  // once via a plain .get() in loadAll(), so a new request sent from
+  // another device never appeared in this app until the screen was
+  // manually reopened or pulled-to-refresh. Now it's a live Firestore
+  // stream, so new requests appear in the Notifications feed
+  // automatically, the same way friend requests already do.
+  StreamSubscription<List<JoinRequest>>? _incomingSub;
+
   @override
   void onInit() {
     super.onInit();
     loadAll();
+  }
+
+  @override
+  void onClose() {
+    _incomingSub?.cancel();
+    super.onClose();
   }
 
   Future<void> loadAll() async {
@@ -34,18 +54,22 @@ class JoinRequestsController extends GetxController {
 
     isLoading.value = true;
     try {
-      // Outgoing: requests I sent to join other people's meetups
-      final outgoing = await repository.getMyRequests();
+      // Outgoing: requests I sent to join other people's meetups.
+      _outgoing = await repository.getMyRequests();
 
-      // Incoming: requests other people sent to join MY meetups
+      // Incoming: requests other people sent to join MY meetups —
+      // now live via watchIncomingForMeetups instead of a one-time
+      // fetch, so new requests show up without reopening the screen.
       final myMeetups = await experienceRepository.getMeetupsByCreator(uid);
-      final incoming = <JoinRequest>[];
-      for (final m in myMeetups) {
-        incoming.addAll(await repository.getRequestsForMeetup(m));
-      }
 
-      final merged = {for (var r in [...outgoing, ...incoming]) r.id: r};
-      requests.assignAll(merged.values.toList());
+      _incomingSub?.cancel();
+      _incomingSub =
+          repository.watchIncomingForMeetups(myMeetups).listen((incoming) {
+        final merged = {
+          for (final r in [..._outgoing, ...incoming]) r.id: r,
+        };
+        requests.assignAll(merged.values.toList());
+      });
     } finally {
       isLoading.value = false;
     }
@@ -74,7 +98,11 @@ class JoinRequestsController extends GetxController {
   Future<void> approve(String requestId) async {
     try {
       await repository.approve(requestId);
-      await loadAll();
+      // No need to call loadAll() here anymore for the incoming side —
+      // the live stream will reflect the status change automatically.
+      // Still refresh outgoing in case this device also has pending
+      // requests of its own.
+      _outgoing = await repository.getMyRequests();
     } catch (e) {
       Get.snackbar(
         "Couldn't approve",
@@ -82,16 +110,12 @@ class JoinRequestsController extends GetxController {
         backgroundColor: Colors.red.shade400,
         colorText: Colors.white,
       );
-      // Refresh anyway — another organizer/session may have changed
-      // state (e.g. the meetup filled up), so the list should reflect
-      // the current truth even though this approval failed.
-      await loadAll();
     }
   }
 
   Future<void> reject(String requestId) async {
     await repository.reject(requestId);
-    await loadAll();
+    _outgoing = await repository.getMyRequests();
   }
 
   // ===========================
@@ -121,11 +145,19 @@ class JoinRequestsController extends GetxController {
   Future<void> sendRequest(Experience meetup) async {
     if (hasRequested(meetup.id)) return;
     await repository.sendRequest(meetup);
-    await loadAll();
+    _outgoing = await repository.getMyRequests();
+    // Re-merge immediately with whatever incoming data we currently
+    // have, so "Request Pending" shows right away on the requester's
+    // own device without waiting for the next stream event.
+    final merged = {
+      for (final r in [..._outgoing, ...requests.where((r) => !r.isMine)])
+        r.id: r,
+    };
+    requests.assignAll(merged.values.toList());
   }
 
   Future<void> cancel(String requestId) async {
     await repository.cancel(requestId);
-    await loadAll();
+    _outgoing = await repository.getMyRequests();
   }
 }
