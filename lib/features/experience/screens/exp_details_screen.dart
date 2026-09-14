@@ -59,6 +59,12 @@ class ExpDetailsScreen extends StatelessWidget {
     final bool hasCoordinates =
         experience.latitude != 0.0 && experience.longitude != 0.0;
 
+    // FIX: neither of these was checked anywhere near the join button
+    // before, so a cancelled or already-ended meetup still showed an
+    // active "Request to Join" button.
+    final bool isCancelled = experience.cancelled;
+    final bool hasEnded = experience.effectiveEndDate.isBefore(DateTime.now());
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -237,6 +243,8 @@ class ExpDetailsScreen extends StatelessWidget {
                     _MeetupCountdown(
                       startDate: experience.date,
                       endDate: experience.effectiveEndDate,
+                      cancelled: isCancelled,
+                      cancelReason: experience.cancelReason,
                     ),
 
                     const SizedBox(height: 24),
@@ -267,20 +275,85 @@ class ExpDetailsScreen extends StatelessWidget {
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryTint,
+                          color: isCancelled
+                              ? Colors.red.shade50
+                              : AppColors.primaryTint,
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Row(
+                        child: Row(
                           children: [
-                            Icon(Icons.info_outline, color: AppColors.primary),
-                            SizedBox(width: 10),
+                            Icon(
+                              isCancelled
+                                  ? Icons.cancel_outlined
+                                  : Icons.info_outline,
+                              color: isCancelled
+                                  ? AppColors.error
+                                  : AppColors.primary,
+                            ),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                "This is your meetup. Manage join requests from My Meetups.",
-                                style: TextStyle(color: AppColors.textPrimary),
+                                isCancelled
+                                    ? "You cancelled this meetup."
+                                        "${experience.cancelReason != null && experience.cancelReason!.trim().isNotEmpty ? ' Reason: ${experience.cancelReason}' : ''}"
+                                    : "This is your meetup. Manage join requests from My Meetups.",
+                                style: TextStyle(
+                                  color: isCancelled
+                                      ? AppColors.error
+                                      : AppColors.textPrimary,
+                                ),
                               ),
                             ),
                           ],
+                        ),
+                      )
+                    else if (isCancelled)
+                      // FIX: this whole branch didn't exist before — a
+                      // cancelled meetup fell through to the normal
+                      // request-to-join logic below, which had no idea
+                      // the meetup was cancelled.
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.cancel_outlined,
+                                color: AppColors.error),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                "This meetup was cancelled by the organizer."
+                                "${experience.cancelReason != null && experience.cancelReason!.trim().isNotEmpty ? ' Reason: ${experience.cancelReason}' : ''}",
+                                style: const TextStyle(color: AppColors.error),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (hasEnded)
+                      // FIX: previously fell through to the request
+                      // button too — an ended meetup should never be
+                      // joinable, regardless of join-request status.
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 16, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: AppColors.textLight,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            "This meetup has ended",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
                         ),
                       )
                     else
@@ -288,6 +361,8 @@ class ExpDetailsScreen extends StatelessWidget {
                         final existing =
                             joinRequestsController.myRequestFor(experience.id);
                         final status = existing?.status;
+                        final sending =
+                            joinRequestsController.isSendingRequest.value;
 
                         final bool isPending =
                             status == JoinRequestStatus.pending;
@@ -298,7 +373,7 @@ class ExpDetailsScreen extends StatelessWidget {
                             status == JoinRequestStatus.rejected;
 
                         final bool disabled =
-                            isPending || isApproved || isRejected;
+                            isPending || isApproved || isRejected || sending;
 
                         String label;
                         Color bgColor;
@@ -339,14 +414,23 @@ class ExpDetailsScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
-                            child: Text(
-                              label,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
+                            child: sending
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                : Text(
+                                    label,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                           ),
                         );
                       }),
@@ -466,9 +550,13 @@ class ExpDetailsScreen extends StatelessWidget {
   }
 }
 
-/// Shows a live countdown between [startDate] and [endDate].
+/// Shows a live countdown between [startDate] and [endDate], or a
+/// cancellation notice if the meetup was cancelled (which now takes
+/// priority over the normal countdown state entirely).
 ///
-/// - Hidden entirely if more than 1 hour from start.
+/// - If [cancelled], always shows "This meetup was cancelled" (+ reason
+///   if provided), regardless of start/end times.
+/// - Otherwise: hidden entirely if more than 1 hour from start.
 /// - "Starts in Xh Ym" between 1 hour and 30 minutes before start.
 /// - "Starts in X min" inside the last 30 minutes before start.
 /// - "Happening now" while between start and end.
@@ -476,7 +564,15 @@ class ExpDetailsScreen extends StatelessWidget {
 class _MeetupCountdown extends StatefulWidget {
   final DateTime startDate;
   final DateTime endDate;
-  const _MeetupCountdown({required this.startDate, required this.endDate});
+  final bool cancelled;
+  final String? cancelReason;
+
+  const _MeetupCountdown({
+    required this.startDate,
+    required this.endDate,
+    this.cancelled = false,
+    this.cancelReason,
+  });
 
   @override
   State<_MeetupCountdown> createState() => _MeetupCountdownState();
@@ -503,6 +599,39 @@ class _MeetupCountdownState extends State<_MeetupCountdown> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.cancelled) {
+      final reason = widget.cancelReason?.trim();
+      final label = (reason != null && reason.isNotEmpty)
+          ? "This meetup was cancelled — $reason"
+          : "This meetup was cancelled";
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cancel_outlined, color: AppColors.error, size: 18),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.error,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final untilStart = widget.startDate.difference(_now);
     final untilEnd = widget.endDate.difference(_now);
 

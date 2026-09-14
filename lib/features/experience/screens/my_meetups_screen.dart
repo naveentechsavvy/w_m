@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../app/theme/colors.dart';
 import '../controllers/join_requests_controller.dart';
 import '../controllers/my_meetups_controller.dart';
+import '../models/experience_model.dart';
 import '../models/join_request_model.dart';
 import '../widgets/meetup_status_card.dart';
 
@@ -87,18 +88,29 @@ class MyMeetupsScreen extends StatelessWidget {
       itemBuilder: (context, index) {
         final meetup = controller.created[index];
         final pendingCount = controller.pendingRequestCountFor(meetup.id);
-        final isCancelled = meetup.cancelled;
-        final canCancel = !isCancelled && meetup.joined == 0;
+        // Cancelling only makes sense for a meetup that's still active —
+        // not already cancelled, AND not already over. A completed
+        // meetup has nothing left to cancel; showing "Cancel" on it was
+        // misleading and (for a 0-joined completed meetup) would have
+        // deleted a real historical record instead of an active listing.
+        final canCancel = !meetup.cancelled && meetup.computedStatus != 'completed';
 
         return MeetupStatusCard(
           experience: meetup,
-          statusLabel: isCancelled
+          statusLabel: meetup.cancelled
               ? "Cancelled"
-              : (pendingCount > 0 ? "$pendingCount Pending" : null),
-          statusColor: isCancelled ? Colors.red : AppColors.warning,
+              : (meetup.computedStatus == 'completed'
+                  ? "Completed"
+                  : (pendingCount > 0 ? "$pendingCount Pending" : null)),
+          statusColor: meetup.cancelled
+              ? AppColors.error
+              : (meetup.computedStatus == 'completed'
+                  ? AppColors.textSecondary
+                  : AppColors.warning),
+          cancelReason: meetup.cancelled ? meetup.cancelReason : null,
           actionLabel: canCancel ? "Cancel" : null,
           onActionTap: canCancel
-              ? () => _confirmCancel(context, controller, meetup.id)
+              ? () => _confirmCancel(context, controller, meetup)
               : null,
         );
       },
@@ -108,7 +120,7 @@ class MyMeetupsScreen extends StatelessWidget {
   Future<void> _confirmCancel(
     BuildContext context,
     MyMeetupsController controller,
-    String meetupId,
+    Experience meetup,
   ) async {
     final reasonController = TextEditingController();
     String? errorText;
@@ -179,7 +191,7 @@ class MyMeetupsScreen extends StatelessWidget {
     if (reason == null || reason.isEmpty) return;
 
     try {
-      await controller.cancelMeetup(meetupId, reason: reason);
+      await controller.cancelMeetup(meetup.id, reason: reason);
       Get.snackbar(
         "Meetup Cancelled",
         "Your meetup has been cancelled.",

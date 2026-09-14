@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'firebase_options.dart';
 import 'app/theme/app_theme.dart';
@@ -14,6 +15,11 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Android 13+ requires this runtime permission prompt, or
+  // notifications silently never arrive. No-op on older Android
+  // versions where notifications are allowed by default.
+  await FirebaseMessaging.instance.requestPermission();
 
   runApp(const WekendMastiApp());
 }

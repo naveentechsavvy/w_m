@@ -4,9 +4,6 @@ import '../../../app/theme/colors.dart';
 import '../models/experience_model.dart';
 import 'experience_card.dart';
 
-/// Wraps the existing [ExperienceCard] with a status chip and an optional
-/// trailing action button, so My Meetups tabs can reuse the exact same
-/// card design used in Explore instead of building a new one.
 class MeetupStatusCard extends StatelessWidget {
   final Experience experience;
   final String? statusLabel;
@@ -14,11 +11,8 @@ class MeetupStatusCard extends StatelessWidget {
   final String? actionLabel;
   final VoidCallback? onActionTap;
   final VoidCallback? onTap;
-
-  /// Shown as a small note below the card when present — e.g. the
-  /// organizer's reason for cancelling. Pass `experience.cancelReason`
-  /// from the Cancelled tab if you want this visible there.
   final String? subtitleNote;
+  final String? cancelReason;
 
   const MeetupStatusCard({
     super.key,
@@ -29,6 +23,7 @@ class MeetupStatusCard extends StatelessWidget {
     this.onActionTap,
     this.onTap,
     this.subtitleNote,
+    this.cancelReason,
   });
 
   @override
@@ -39,7 +34,6 @@ class MeetupStatusCard extends StatelessWidget {
         Stack(
           children: [
             ExperienceCard(experience: experience, onTap: onTap),
-
             if (statusLabel != null)
               Positioned(
                 top: 14,
@@ -62,7 +56,27 @@ class MeetupStatusCard extends StatelessWidget {
               ),
           ],
         ),
-
+        if (cancelReason != null && cancelReason!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 14, color: Colors.red.shade400),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    "Reason: $cancelReason",
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.red.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (subtitleNote != null && subtitleNote!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -75,7 +89,6 @@ class MeetupStatusCard extends StatelessWidget {
               ),
             ),
           ),
-
         if (actionLabel != null)
           Padding(
             padding: const EdgeInsets.only(top: 10, bottom: 4),

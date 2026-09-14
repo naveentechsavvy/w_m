@@ -18,6 +18,13 @@ class JoinRequestsController extends GetxController {
   final RxList<JoinRequest> requests = <JoinRequest>[].obs;
   RxBool isLoading = false.obs;
 
+  // Guards against a rapid double-tap on "Request to Join" firing two
+  // sendRequest() calls before the first one's Firestore existence-check
+  // has resolved — without this, both calls could see "no existing
+  // request yet" and both write a doc, creating a duplicate request
+  // (and duplicate notification) for the same meetup.
+  final RxBool isSendingRequest = false.obs;
+
   // Outgoing requests (mine) are cheap and don't need to be live — kept
   // as a plain snapshot, refreshed by loadAll().
   List<JoinRequest> _outgoing = [];
@@ -144,16 +151,26 @@ class JoinRequestsController extends GetxController {
 
   Future<void> sendRequest(Experience meetup) async {
     if (hasRequested(meetup.id)) return;
-    await repository.sendRequest(meetup);
-    _outgoing = await repository.getMyRequests();
-    // Re-merge immediately with whatever incoming data we currently
-    // have, so "Request Pending" shows right away on the requester's
-    // own device without waiting for the next stream event.
-    final merged = {
-      for (final r in [..._outgoing, ...requests.where((r) => !r.isMine)])
-        r.id: r,
-    };
-    requests.assignAll(merged.values.toList());
+    // Blocks a second call from proceeding while the first is still
+    // in flight — set synchronously, before any await, so a rapid
+    // double-tap can't slip through the gap.
+    if (isSendingRequest.value) return;
+
+    isSendingRequest.value = true;
+    try {
+      await repository.sendRequest(meetup);
+      _outgoing = await repository.getMyRequests();
+      // Re-merge immediately with whatever incoming data we currently
+      // have, so "Request Pending" shows right away on the requester's
+      // own device without waiting for the next stream event.
+      final merged = {
+        for (final r in [..._outgoing, ...requests.where((r) => !r.isMine)])
+          r.id: r,
+      };
+      requests.assignAll(merged.values.toList());
+    } finally {
+      isSendingRequest.value = false;
+    }
   }
 
   Future<void> cancel(String requestId) async {

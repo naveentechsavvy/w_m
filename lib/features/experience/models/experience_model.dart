@@ -5,6 +5,7 @@ class Experience {
   final String title;
   final String category;
   final String location;
+  final String city;
   final String image;
   final DateTime date;
   final DateTime? endDate;
@@ -40,6 +41,7 @@ class Experience {
     required this.title,
     required this.category,
     required this.location,
+    this.city = "",
     required this.image,
     required this.date,
     this.endDate,
@@ -84,6 +86,7 @@ class Experience {
       'title': title,
       'category': category,
       'location': location,
+      'city': city,
       'image': image,
       'date': Timestamp.fromDate(date),
       'endDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
@@ -112,6 +115,7 @@ class Experience {
       title: map['title'] ?? '',
       category: map['category'] ?? '',
       location: map['location'] ?? '',
+      city: map['city'] ?? '',
       image: map['image'] ?? '',
       date: (map['date'] as Timestamp).toDate(),
       endDate: map['endDate'] != null

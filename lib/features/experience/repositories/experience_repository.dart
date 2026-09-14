@@ -23,4 +23,11 @@ class ExperienceRepository {
         'cancelled': true,
         'cancelReason': reason,
       });
+
+  /// Deletes a meetup outright. Only meant to be used when a meetup has
+  /// zero joined participants — see cancelMeetup() in
+  /// MyMeetupsController for the guard that decides which of the two
+  /// to call. For a meetup with participants, cancelMeetup() (soft
+  /// cancel) should be used instead so their join history isn't wiped.
+  Future<void> deleteMeetup(String id) => datasource.deleteMeetup(id);
 }

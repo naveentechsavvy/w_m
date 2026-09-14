@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/routes/app_routes.dart';
@@ -185,7 +186,8 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-/// Animated Weekend Masti title
+/// Animated Weekend Masti title — uses Poppins ExtraBold to match the
+/// website's logo font (see website styles.scss: --wm-font: 'Poppins', ...).
 class _AnimatedTitle extends StatelessWidget {
   final AnimationController controller;
 
@@ -210,21 +212,19 @@ class _AnimatedTitle extends StatelessWidget {
         text: TextSpan(
           children: [
             TextSpan(
-              text: "Weekend ",
-              style: TextStyle(
-                fontFamily: 'Fredoka',
+              text: "weekend ",
+              style: GoogleFonts.poppins(
                 fontSize: 40,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 letterSpacing: -0.5,
                 color: AppColors.textPrimary,
               ),
             ),
             TextSpan(
-              text: "Masti",
-              style: TextStyle(
-                fontFamily: 'Fredoka',
+              text: "masti",
+              style: GoogleFonts.poppins(
                 fontSize: 40,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 letterSpacing: -0.5,
                 color: AppColors.primary,
               ),

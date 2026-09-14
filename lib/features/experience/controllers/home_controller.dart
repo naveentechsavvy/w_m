@@ -88,9 +88,19 @@ class HomeController extends GetxController {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return null;
 
+    // FIX: previously only checked `date.isAfter(now)`, which doesn't
+    // account for cancelled meetups — a cancelled meetup whose original
+    // start time hadn't arrived yet would still show here (e.g. a
+    // meetup cancelled minutes before it was due to start). Now also
+    // excludes cancelled meetups, and uses `effectiveEndDate` instead
+    // of the raw start `date` so a meetup that's currently in progress
+    // (started but not yet ended) still correctly counts as "upcoming"
+    // here too — matching the same status logic used in My Meetups and
+    // the website.
     final mine = allExperiences
         .where((e) =>
-            e.date.isAfter(DateTime.now()) &&
+            !e.cancelled &&
+            e.effectiveEndDate.isAfter(DateTime.now()) &&
             (e.createdBy == uid || e.participants.contains(uid)))
         .toList()
       ..sort((a, b) => a.date.compareTo(b.date));

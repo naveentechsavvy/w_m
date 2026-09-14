@@ -15,6 +15,7 @@ class ExperienceController extends GetxController {
 
   RxList<Experience> experiences = <Experience>[].obs;
   RxString selectedCategory = "All".obs;
+  RxString selectedCity = "All".obs;
   RxInt selectedNavIndex = 0.obs;
   RxBool isLoading = false.obs;
   RxList<String> categories = <String>[
@@ -35,7 +36,7 @@ class ExperienceController extends GetxController {
   RxBool locationLoading = false.obs;
 
   /// Meetups within this radius count as "nearby". Adjust as needed.
-  static const double _nearbyRadiusKm = 15.0;
+  static const double _nearbyRadiusKm = 20.0;
 
   @override
   void onInit() {
@@ -97,13 +98,69 @@ class ExperienceController extends GetxController {
     selectedCategory.value = category;
   }
 
-  List<Experience> get _upcoming =>
-      experiences.where((e) => e.date.isAfter(DateTime.now())).toList();
+  // ===========================
+  // City filtering
+  // ===========================
+  /// `city` can be an exact city name (from tapping a suggestion) or a
+  /// partial, in-progress search string (typed live). Either way it's
+  /// stored as-is and matched as a case-insensitive substring in
+  /// `filteredExperiences` below — "All" (or empty) means no filter.
+  void changeCity(String city) {
+    selectedCity.value = city;
+  }
+
+  /// Built from whatever cities actually exist across current meetups
+  /// (already normalized to consistent Title Case at creation time —
+  /// see normalizeCityName() in CreateMeetupScreen), so this list
+  /// never goes stale or needs manual updates as new cities show up.
+  /// "All" always sits first regardless of alphabetical order.
+  List<String> get cities {
+    final unique = experiences
+        .map((e) => e.city.trim())
+        .where((c) => c.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return ["All", ...unique];
+  }
+
+  // FIX: this feeds Trending/Nearby/Recommended on Explore — public
+  // listings anyone can browse and join. It previously only checked
+  // `date.isAfter(now)`, so a meetup that had already started (i.e.
+  // currently "Ongoing", not "Upcoming") would incorrectly disappear
+  // from the app even though it was still active and joinable — the
+  // web admin's "All"/"Ongoing" tabs still showed it fine because
+  // they don't apply this same has-it-started filter. We now check
+  // `effectiveEndDate` instead of `date`, so a meetup stays visible
+  // for its entire active window (from creation until it actually
+  // ends), not just until its start time. Cancelled meetups are still
+  // excluded outright, since Explore should never surface something
+  // the organizer called off — regardless of whether anyone had
+  // joined it.
+  List<Experience> get _upcoming => experiences
+      .where((e) => !e.cancelled && e.effectiveEndDate.isAfter(DateTime.now()))
+      .toList();
 
   List<Experience> get _filteredByCategory {
     final base = _upcoming;
     if (selectedCategory.value == "All") return base;
     return base.where((e) => e.category == selectedCategory.value).toList();
+  }
+
+  /// Category + city combined — the single list Explore now shows.
+  /// City matching is a case-insensitive substring match (e.g. typing
+  /// "che" matches "Chennai"), not an exact match, so results update
+  /// live as the user types rather than only after picking a
+  /// suggestion.
+  List<Experience> get filteredExperiences {
+    final base = _filteredByCategory;
+    final query = selectedCity.value.trim();
+    if (query.isEmpty || query == "All") return base;
+
+    final lowerQuery = query.toLowerCase();
+    return base
+        .where((e) => e.city.toLowerCase().contains(lowerQuery))
+        .toList();
   }
 
   // ===========================
@@ -120,12 +177,6 @@ class ExperienceController extends GetxController {
     final uid = currentUser.uid;
     debugPrint("[ExperienceController] uid=$uid");
 
-    // Premium gating: controlled by the admin flag at
-    // app_config/settings.premiumEnabled in Firestore.
-    // - Flag OFF  -> anyone can create a meetup (free-for-all launch
-    //                period), regardless of subscription status.
-    // - Flag ON   -> only users with an active Premium subscription
-    //                can create; everyone else is blocked here.
     final appConfigController = Get.isRegistered<AppConfigController>()
         ? Get.find<AppConfigController>()
         : Get.put(AppConfigController(), permanent: true);
@@ -141,17 +192,10 @@ class ExperienceController extends GetxController {
           "Creating meetups is a Premium feature. Subscribe to Premium to create your own meetup.");
     }
 
-    // One-active-group-at-a-time rule: an organizer can't create a new
-    // meetup while they still have one that hasn't happened yet.
-    // "Ended" means either the date/time has passed, or it was
-    // cancelled — cancelMeetup() already hard-deletes the doc (see
-    // ExperienceDataSource.deleteMeetup), so a cancelled meetup simply
-    // won't appear in getMeetupsByCreator() anymore. That means the
-    // only thing left to check here is whether any of the organizer's
-    // remaining meetups still have a future date.
     final existingMeetups = await repository.getMeetupsByCreator(uid);
-    final hasActiveMeetup =
-        existingMeetups.any((e) => e.date.isAfter(DateTime.now()));
+    final hasActiveMeetup = existingMeetups.any(
+      (e) => !e.cancelled && e.effectiveEndDate.isAfter(DateTime.now()),
+    );
     if (hasActiveMeetup) {
       debugPrint(
           "[ExperienceController] blocked: organizer already has an active meetup");
@@ -164,8 +208,10 @@ class ExperienceController extends GetxController {
       title: newExperience.title,
       category: newExperience.category,
       location: newExperience.location,
+      city: newExperience.city,
       image: newExperience.image,
       date: newExperience.date,
+      endDate: newExperience.endDate,
       price: newExperience.price,
       joined: newExperience.joined,
       seats: newExperience.seats,
@@ -211,10 +257,6 @@ class ExperienceController extends GetxController {
   // ===========================
   List<Experience> get trending => _filteredByCategory;
 
-  /// GPS-based: meetups within `_nearbyRadiusKm`, sorted closest-first.
-  /// Falls back to the full filtered list if we don't have a GPS fix
-  /// yet (e.g. permission not granted), so the section isn't empty
-  /// while location is loading.
   List<Experience> get nearby {
     final pos = currentPosition.value;
     if (pos == null) return _filteredByCategory;

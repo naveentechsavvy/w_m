@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class AuthDataSource {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -50,19 +51,36 @@ class AuthDataSource {
     return userCredential;
   }
 
-  /// Marks the user active in Firestore, and stamps `joinedAt` only the
-  /// first time this doc is ever created (so repeat logins don't reset it).
+  /// Marks the user active in Firestore, stamps `joinedAt` only the
+  /// first time this doc is ever created (so repeat logins don't reset
+  /// it), and saves/refreshes the device's FCM token so push
+  /// notifications can be sent to this user later — including while
+  /// the app is fully closed. Saving on every login also keeps this
+  /// current if the token rotates (which FCM does periodically).
   Future<void> _markUserActive(String? uid) async {
     if (uid == null) return;
 
     final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
     final existing = await docRef.get();
 
-    await docRef.set({
+    final Map<String, dynamic> data = {
       'isActive': true,
       'lastSeenAt': FieldValue.serverTimestamp(),
       if (!existing.exists) 'joinedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+
+    // Best-effort — if permission was denied or the token fetch fails
+    // for any reason, we still want login itself to succeed.
+    try {
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (fcmToken != null) {
+        data['fcmToken'] = fcmToken;
+      }
+    } catch (e) {
+      print("⚠️ Couldn't get FCM token: $e");
+    }
+
+    await docRef.set(data, SetOptions(merge: true));
   }
 
   /// Marks the user inactive in Firestore, then signs them out of

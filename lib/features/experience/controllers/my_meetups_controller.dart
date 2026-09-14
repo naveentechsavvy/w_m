@@ -35,20 +35,39 @@ class MyMeetupsController extends GetxController {
   // ===========================
   // Created tab
   // ===========================
-  List<Experience> get created => _createdMeetups;
+  // A cancelled meetup that nobody joined disappears from this list
+  // entirely — nobody was affected, so there's nothing to show. A
+  // cancelled meetup that DID have participants still shows here with
+  // the "Cancelled" badge, so the organizer can see what happened to
+  // something people had joined.
+  List<Experience> get created =>
+      _createdMeetups.where((e) => !(e.cancelled && e.joined == 0)).toList();
 
   int pendingRequestCountFor(String meetupId) =>
       joinRequestsController.pendingIncomingForMeetup(meetupId).length;
 
-  /// Cancels a meetup the current user created. Sets the meetup's
-  /// `cancelled` flag (and now a `cancelReason`) in Firestore — soft
-  /// cancel, the doc stays so participants' join history isn't wiped —
-  /// and reloads the created list so the card updates to show a
-  /// "Cancelled" state instead of disappearing from the tab.
+  /// Cancels a meetup the current user created.
+  ///
+  /// - If nobody has joined yet, the meetup is deleted outright — there's
+  ///   no one to notify, so there's nothing worth keeping a record of,
+  ///   and it should simply disappear rather than linger anywhere.
+  /// - If people have already joined, it's soft-cancelled instead (the
+  ///   Firestore doc stays, `cancelled` + `cancelReason` are set) so
+  ///   participants can still see it in their own Cancelled tab along
+  ///   with the organizer's reason, and their join history isn't wiped.
   Future<void> cancelMeetup(String meetupId, {required String reason}) async {
     try {
-      await experienceRepository.cancelMeetup(meetupId, reason: reason);
-      await loadCreatedMeetups(); // refresh so the card shows as cancelled, not removed
+      final meetup =
+          _createdMeetups.firstWhereOrNull((e) => e.id == meetupId);
+      final hasParticipants = (meetup?.joined ?? 0) > 0;
+
+      if (hasParticipants) {
+        await experienceRepository.cancelMeetup(meetupId, reason: reason);
+      } else {
+        await experienceRepository.deleteMeetup(meetupId);
+      }
+
+      await loadCreatedMeetups(); // refresh so the card updates or disappears
     } catch (_) {
       Get.snackbar(
         "Couldn't cancel",
@@ -60,43 +79,56 @@ class MyMeetupsController extends GetxController {
 
   // ===========================
   // Joined tab
+  // FIX: previously showed ANY pending/approved request regardless of
+  // whether the organizer had cancelled the meetup — which meant a
+  // joined-then-cancelled meetup appeared in BOTH this tab AND the
+  // Cancelled tab at the same time. Now excludes cancelled meetups,
+  // same as Upcoming/Completed already did, so a cancelled meetup only
+  // ever shows in exactly one place: Cancelled.
   // ===========================
   List<JoinRequest> get joined => joinRequestsController.myRequests
       .where((r) =>
-          r.status == JoinRequestStatus.pending ||
-          r.status == JoinRequestStatus.approved)
+          (r.status == JoinRequestStatus.pending ||
+              r.status == JoinRequestStatus.approved) &&
+          !r.meetup.cancelled)
       .toList();
 
   // ===========================
   // Upcoming tab
-  // A meetup stays "Upcoming" for its entire duration — it only
-  // moves to "Completed" once its end time has passed. Uses
-  // effectiveEndDate so older meetups without a saved endDate
-  // (2-hour default) still work correctly.
+  // Excludes meetups the organizer has cancelled — those move to the
+  // Cancelled tab instead (with the organizer's reason), regardless of
+  // how much time was originally left on the clock.
   // ===========================
   List<JoinRequest> get upcoming => joinRequestsController.myRequests
       .where((r) =>
           r.status == JoinRequestStatus.approved &&
+          !r.meetup.cancelled &&
           r.meetup.effectiveEndDate.isAfter(DateTime.now()))
       .toList();
 
   // ===========================
   // Completed tab
-  // Moves here once the meetup's end time (not start time) has
-  // passed.
+  // Same cancellation exclusion as Upcoming.
   // ===========================
   List<JoinRequest> get completed => joinRequestsController.myRequests
       .where((r) =>
           r.status == JoinRequestStatus.approved &&
+          !r.meetup.cancelled &&
           r.meetup.effectiveEndDate.isBefore(DateTime.now()))
       .toList();
 
   // ===========================
   // Cancelled tab
+  // Covers the participant's OWN join request being cancelled/rejected,
+  // AND the case where the request was approved but the ORGANIZER
+  // cancelled the whole meetup afterward. The UI (meetup_status_card)
+  // is responsible for showing the organizer's cancelReason so the
+  // participant knows why.
   // ===========================
   List<JoinRequest> get cancelled => joinRequestsController.myRequests
       .where((r) =>
           r.status == JoinRequestStatus.cancelled ||
-          r.status == JoinRequestStatus.rejected)
+          r.status == JoinRequestStatus.rejected ||
+          (r.status == JoinRequestStatus.approved && r.meetup.cancelled))
       .toList();
 }

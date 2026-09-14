@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
@@ -16,9 +19,10 @@ import '../models/experience_model.dart';
 // ===========================
 // Location picker bottom sheet — its own StatefulWidget so it has a
 // real `mounted` check. Prevents "setState() called after dispose()"
-// if the user closes the sheet while a GPS/permission lookup is
-// still in flight. Uses flutter_map (OpenStreetMap tiles) — no API
-// key or billing account required, unlike google_maps_flutter.
+// if the user closes the sheet while a GPS/permission lookup or a
+// search request is still in flight. Uses flutter_map (OpenStreetMap
+// tiles) and Nominatim (OpenStreetMap's free geocoding search) — no
+// API key or billing account required for either.
 // ===========================
 class _LocationPickerSheet extends StatefulWidget {
   final LatLng initialPosition;
@@ -28,15 +32,106 @@ class _LocationPickerSheet extends StatefulWidget {
   State<_LocationPickerSheet> createState() => _LocationPickerSheetState();
 }
 
+class _SearchResult {
+  final String displayName;
+  final double lat;
+  final double lon;
+  _SearchResult({required this.displayName, required this.lat, required this.lon});
+}
+
 class _LocationPickerSheetState extends State<_LocationPickerSheet> {
   late LatLng pickedPosition;
   final MapController mapController = MapController();
   bool locating = false;
 
+  final searchController = TextEditingController();
+  final searchFocusNode = FocusNode();
+  Timer? _debounce;
+  bool searching = false;
+  List<_SearchResult> searchResults = [];
+  bool showResults = false;
+
   @override
   void initState() {
     super.initState();
     pickedPosition = widget.initialPosition;
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    searchController.dispose();
+    searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void onSearchChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        searchResults = [];
+        showResults = false;
+      });
+      return;
+    }
+    // Debounce so we're not firing a request on every keystroke.
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      runSearch(query.trim());
+    });
+  }
+
+  Future<void> runSearch(String query) async {
+    setState(() {
+      searching = true;
+      showResults = true;
+    });
+    try {
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/search'
+        '?q=${Uri.encodeQueryComponent(query)}'
+        '&format=json&limit=6',
+      );
+      // NOTE: deliberately not setting a 'User-Agent' header — browsers
+      // (Flutter Web) refuse to let JS set that header at all, so it
+      // either gets silently stripped or can cause the request to be
+      // treated inconsistently across browsers. Nominatim's CORS
+      // config allows anonymous browser requests without it.
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          searchResults = data
+              .map((item) => _SearchResult(
+                    displayName: item['display_name'] as String,
+                    lat: double.parse(item['lat'] as String),
+                    lon: double.parse(item['lon'] as String),
+                  ))
+              .toList();
+        });
+      } else {
+        setState(() => searchResults = []);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => searchResults = []);
+    } finally {
+      if (mounted) setState(() => searching = false);
+    }
+  }
+
+  void selectSearchResult(_SearchResult result) {
+    final newPos = LatLng(result.lat, result.lon);
+    setState(() {
+      pickedPosition = newPos;
+      searchController.text = result.displayName;
+      showResults = false;
+      searchResults = [];
+    });
+    searchFocusNode.unfocus();
+    mapController.move(newPos, 16);
   }
 
   Future<void> useCurrentLocation() async {
@@ -106,10 +201,101 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
             ),
             const SizedBox(height: 8),
             const Text(
-              "Tap on the map to drop a pin at the exact spot",
+              "Search a place or tap on the map to drop a pin",
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
+
+            // ===== Search box =====
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: TextField(
+                controller: searchController,
+                focusNode: searchFocusNode,
+                onChanged: onSearchChanged,
+                decoration: InputDecoration(
+                  hintText: "Search for a place or address",
+                  border: InputBorder.none,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  prefixIcon: const Icon(Icons.search, color: AppColors.primary),
+                  suffixIcon: searching
+                      ? const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : (searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () {
+                                setState(() {
+                                  searchController.clear();
+                                  searchResults = [];
+                                  showResults = false;
+                                });
+                              },
+                            )
+                          : null),
+                ),
+              ),
+            ),
+
+            if (showResults)
+              Container(
+                margin: const EdgeInsets.only(top: 6),
+                constraints: const BoxConstraints(maxHeight: 200),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: searchResults.isEmpty && !searching
+                    ? const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          "No results found",
+                          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: searchResults.length,
+                        separatorBuilder: (_, __) =>
+                            Divider(height: 1, color: Colors.grey.shade200),
+                        itemBuilder: (context, index) {
+                          final r = searchResults[index];
+                          return ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.location_on_outlined,
+                                size: 18, color: AppColors.primary),
+                            title: Text(
+                              r.displayName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            onTap: () => selectSearchResult(r),
+                          );
+                        },
+                      ),
+              ),
+
+            const SizedBox(height: 14),
+
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: SizedBox(
@@ -123,6 +309,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
                     onTap: (tapPosition, point) {
                       setState(() {
                         pickedPosition = point;
+                        showResults = false;
                       });
                     },
                   ),
@@ -205,17 +392,29 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   final locationController = TextEditingController();
   final priceController = TextEditingController();
   final seatsController = TextEditingController();
+  final cityController = TextEditingController();
+  final cityFocusNode = FocusNode();
 
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
   TimeOfDay? selectedEndTime;
   bool isPrivate = false;
+  bool showCitySuggestions = false;
 
   Uint8List? bannerBytes;
   bool saving = false;
 
   double? selectedLat;
   double? selectedLng;
+
+  // True while we're reverse-geocoding the picked lat/lng into a city
+  // name. Drives the small spinner in the city field so it's obvious
+  // the field is being auto-filled rather than sitting blank.
+  bool resolvingCity = false;
+
+  // Same idea for the location field — true while we're turning the
+  // raw lat/lng into a readable address.
+  bool resolvingAddress = false;
 
   final List<String> categoryOptions = const [
     "Adventure",
@@ -226,6 +425,61 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     "Food",
   ];
 
+  // Starting suggestion set for the city autocomplete — the field
+  // itself accepts any typed value, this list just powers the
+  // suggestion dropdown as the user types. Still here as a manual
+  // fallback/override for whenever reverse geocoding can't resolve a
+  // city (offline, remote pin, rate-limited, etc).
+  final List<String> cityOptions = const [
+    "Hyderabad",
+    "Chennai",
+    "Bangalore",
+    "Mumbai",
+    "Delhi",
+    "Pune",
+    "Kolkata",
+    "Ahmedabad",
+    "Jaipur",
+    "Lucknow",
+    "Chandigarh",
+    "Kochi",
+    "Coimbatore",
+    "Indore",
+    "Surat",
+    "Nagpur",
+    "Visakhapatnam",
+    "Bhopal",
+    "Patna",
+    "Vadodara",
+    "Nashik",
+    "Mysore",
+    "Thiruvananthapuram",
+    "Guwahati",
+  ];
+
+  // Suggestions filtered live against whatever the user has typed so
+  // far in the city field.
+  List<String> get filteredCityOptions {
+    final query = cityController.text.trim().toLowerCase();
+    if (query.isEmpty) return cityOptions;
+    return cityOptions
+        .where((c) => c.toLowerCase().contains(query))
+        .toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Suggestions only ever show while the field is focused AND has
+    // text in it — never on load, never after tapping away.
+    cityFocusNode.addListener(() {
+      setState(() {
+        showCitySuggestions =
+            cityFocusNode.hasFocus && cityController.text.trim().isNotEmpty;
+      });
+    });
+  }
+
   @override
   void dispose() {
     titleController.dispose();
@@ -234,6 +488,8 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     locationController.dispose();
     priceController.dispose();
     seatsController.dispose();
+    cityController.dispose();
+    cityFocusNode.dispose();
     super.dispose();
   }
 
@@ -292,9 +548,124 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   }
 
   // ===========================
+  // Reverse geocoding — turns the lat/lng the user picked on the map
+  // into (a) a city name and (b) a short human-readable address, so
+  // neither field is left showing raw coordinates. Uses the same
+  // free Nominatim service as the location search (no API key or
+  // billing needed). One request covers both fields since they come
+  // from the same "address" breakdown Nominatim returns.
+  //
+  // FIX: this previously (1) sent a 'User-Agent' header, which
+  // browsers refuse to let JS set at all — Flutter Web builds could
+  // have this silently dropped or the whole request treated
+  // inconsistently, causing reverse geocoding to fail more often than
+  // it should; and (2) fell back to `null` for the address whenever
+  // Nominatim's address breakdown didn't include road/neighbourhood/
+  // suburb/state, even when Nominatim DID successfully resolve the
+  // point and returned a perfectly good `display_name` — so the
+  // location field was left showing raw "lat, lng" far more often
+  // than necessary. Both fixed below: no more User-Agent header, and
+  // `display_name` is now used as the fallback any time the short
+  // address can't be built, so raw coordinates only ever show if the
+  // network call itself genuinely fails.
+  // ===========================
+  Future<Map<String, String?>> reverseGeocode(double lat, double lng) async {
+    try {
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse'
+        '?lat=$lat&lon=$lng&format=json&zoom=18&addressdetails=1',
+      );
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return {};
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final address = data['address'] as Map<String, dynamic>?;
+      final fullDisplayName = data['display_name'] as String?;
+
+      if (address == null) {
+        // Nominatim still resolved the point even if it couldn't break
+        // it into components — show that instead of raw coordinates.
+        return {'city': null, 'displayName': fullDisplayName};
+      }
+
+      // Nominatim doesn't tag every place the same way — a big metro
+      // area comes back as "city", a smaller town as "town", etc.
+      // Fall through the likely fields in order of specificity.
+      final cityRaw = address['city'] ??
+          address['town'] ??
+          address['village'] ??
+          address['municipality'] ??
+          address['county'] ??
+          address['state_district'] ??
+          address['state'];
+      final city =
+          (cityRaw is String && cityRaw.trim().isNotEmpty) ? cityRaw.trim() : null;
+
+      final shortAddress = _buildShortAddress(address, fallbackCity: city);
+
+      return {
+        'city': city,
+        // Falls back to Nominatim's own full display_name — still a
+        // real, readable place description — rather than leaving this
+        // null and forcing the caller to keep showing coordinates.
+        'displayName': shortAddress ?? fullDisplayName,
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // Builds a short, readable address like "MG Road, Chennai, Tamil
+  // Nadu" instead of Nominatim's full display_name (which tends to
+  // be a long comma-separated dump including postal code, country,
+  // etc — too long to sit nicely in the location field). Returns null
+  // if none of the expected pieces are present — callers should fall
+  // back to the full display_name in that case, not to coordinates.
+  String? _buildShortAddress(Map<String, dynamic> address, {String? fallbackCity}) {
+    final parts = <String>[];
+
+    final streetLevel =
+        address['road'] ?? address['neighbourhood'] ?? address['suburb'];
+    if (streetLevel is String && streetLevel.trim().isNotEmpty) {
+      parts.add(streetLevel.trim());
+    }
+
+    if (fallbackCity != null && fallbackCity.trim().isNotEmpty) {
+      parts.add(fallbackCity.trim());
+    }
+
+    final state = address['state'];
+    if (state is String && state.trim().isNotEmpty) {
+      parts.add(state.trim());
+    }
+
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+
+  // ===========================
+  // Normalizes a city string to a consistent "Title Case" format
+  // (e.g. "chennai", "CHENNAI", " Chennai " all become "Chennai").
+  // The website's city filter does an exact string match against
+  // whatever is saved here, so without this, meetups in the same
+  // city but typed with different casing/spacing would be treated
+  // as different cities and silently split the filter.
+  // ===========================
+  String normalizeCityName(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return trimmed;
+    return trimmed
+        .split(RegExp(r'\s+'))
+        .map((word) => word.isEmpty
+            ? word
+            : word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .join(' ');
+  }
+
+  // ===========================
   // Location picker (bottom sheet) — hosts _LocationPickerSheet, its
-  // own StatefulWidget, so async GPS/permission calls can't crash
-  // after the sheet is closed.
+  // own StatefulWidget, so async GPS/permission/search calls can't
+  // crash after the sheet is closed.
   // ===========================
   Future<void> pickLocation() async {
     LatLng initialPosition = const LatLng(17.3850, 78.4867); // Hyderabad default
@@ -309,16 +680,47 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       builder: (context) => _LocationPickerSheet(initialPosition: initialPosition),
     );
 
-    if (result != null) {
-      final lat = result['lat'] as double;
-      final lng = result['lng'] as double;
-      setState(() {
-        selectedLat = lat;
-        selectedLng = lng;
-        // No geocoding package here, so we display coordinates
-        // directly instead of a readable address.
-        locationController.text = "${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}";
-      });
+    if (result == null) return;
+
+    final lat = result['lat'] as double;
+    final lng = result['lng'] as double;
+
+    if (!mounted) return;
+    setState(() {
+      selectedLat = lat;
+      selectedLng = lng;
+      // Show the coordinates immediately as a placeholder — swapped
+      // for a readable address below once reverse geocoding resolves.
+      // If it genuinely fails, the coordinates stay as the last-resort
+      // fallback and we tell the user to type it in by hand.
+      locationController.text = "${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}";
+      resolvingCity = true;
+      resolvingAddress = true;
+    });
+
+    final geo = await reverseGeocode(lat, lng);
+
+    if (!mounted) return;
+    setState(() {
+      resolvingCity = false;
+      resolvingAddress = false;
+      if (geo['city'] != null) {
+        cityController.text = normalizeCityName(geo['city']!);
+      }
+      if (geo['displayName'] != null) {
+        locationController.text = geo['displayName']!;
+      }
+    });
+
+    // Only reachable if reverseGeocode() genuinely failed (network
+    // error, timeout, or Nominatim returned nothing usable at all) —
+    // the coordinate fallback text is still sitting in the field, so
+    // let the user know they should type the place name themselves.
+    if (geo['displayName'] == null) {
+      Get.snackbar(
+        "Couldn't Detect Address",
+        "Please type the location and city in manually.",
+      );
     }
   }
 
@@ -333,6 +735,11 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     }
     if (locationController.text.trim().isEmpty) {
       Get.snackbar("Missing Location", "Please set a location");
+      return false;
+    }
+    if (cityController.text.trim().isEmpty) {
+      Get.snackbar("Missing City",
+          "Couldn't detect a city for this location — please type it in");
       return false;
     }
     if (selectedDate == null) {
@@ -407,6 +814,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       title: titleController.text.trim(),
       category: categoryController.text.trim(),
       location: locationController.text.trim(),
+      city: normalizeCityName(cityController.text.trim()),
       image: "assets/experiences/trek.webp", // placeholder until real upload wired
       date: combinedDate,
       endDate: combinedEndDate,
@@ -643,11 +1051,92 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                         ),
                       ),
                     ),
+                    if (resolvingAddress)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: SizedBox(
+                          height: 14,
+                          width: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
                     const Icon(Icons.chevron_right,
                         size: 20, color: AppColors.textSecondary),
                   ],
                 ),
               ),
+            ),
+
+            fieldLabel("CITY"),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Auto-filled from the location you pick above. Still
+                // editable by hand as a fallback for when reverse
+                // geocoding can't resolve a city for the pin.
+                TextField(
+                  controller: cityController,
+                  focusNode: cityFocusNode,
+                  onChanged: (value) {
+                    setState(() {
+                      showCitySuggestions = value.trim().isNotEmpty;
+                    });
+                  },
+                  decoration: fieldDecoration(
+                    "Auto-filled after you set a location",
+                  ).copyWith(
+                    suffixIcon: resolvingCity
+                        ? const Padding(
+                            padding: EdgeInsets.all(14),
+                            child: SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+                if (showCitySuggestions && filteredCityOptions.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.06),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      itemCount: filteredCityOptions.length,
+                      separatorBuilder: (_, __) =>
+                          Divider(height: 1, color: Colors.grey.shade200),
+                      itemBuilder: (context, index) {
+                        final c = filteredCityOptions[index];
+                        return ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.location_on_outlined,
+                              size: 18, color: AppColors.primary),
+                          title: Text(c, style: const TextStyle(fontSize: 14)),
+                          onTap: () {
+                            setState(() {
+                              cityController.text = c;
+                              showCitySuggestions = false;
+                            });
+                            cityFocusNode.unfocus();
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
             ),
 
             fieldLabel("DATE & TIME"),
