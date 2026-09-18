@@ -5,6 +5,8 @@ import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../notifications/models/app_notification_model.dart';
+import '../../notifications/repositories/notification_repository.dart';
 import '../models/message_model.dart';
 import '../repositories/chat_repository.dart';
 
@@ -34,6 +36,7 @@ import '../repositories/chat_repository.dart';
 /// and resolve the same way in ChatScreen.
 class ChatController extends GetxController {
   final ChatRepository repository = ChatRepository();
+  final NotificationRepository notificationRepository = NotificationRepository();
 
   /// Own messages can be edited/deleted only within this window of
   /// sending — matches the common WhatsApp-style edit-window pattern.
@@ -287,6 +290,32 @@ class ChatController extends GetxController {
         otherUserId: otherUserId,
       );
       textController.clear();
+
+      // FIX: sending a message never created anything in the recipient's
+      // Notifications screen — this was the only gap. Only private and
+      // organizer chats have a single, well-defined recipient
+      // (otherUserId); group chats have many participants and aren't
+      // covered here, since "who gets notified" for a group message is
+      // a separate design decision (all members? just ones who haven't
+      // muted it?) rather than a one-line fix.
+      if ((chatType == ChatType.private || chatType == ChatType.organizer) &&
+          otherUserId != null &&
+          otherUserId!.isNotEmpty) {
+        // Fire-and-forget: a failure here shouldn't block the message
+        // from being considered "sent" — the message itself already
+        // wrote successfully above.
+        notificationRepository
+            .create(
+          userId: otherUserId!,
+          type: NotificationType.newMessage,
+          title: _senderName,
+          body: text.length > 80 ? '${text.substring(0, 80)}…' : text,
+          relatedId: roomId,
+        )
+            .catchError((e) {
+          debugPrint('Failed to create message notification: $e');
+        });
+      }
     } catch (e) {
       debugPrint('Send message error: $e');
       Get.snackbar(

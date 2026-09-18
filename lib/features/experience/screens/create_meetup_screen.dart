@@ -74,7 +74,6 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
       });
       return;
     }
-    // Debounce so we're not firing a request on every keystroke.
     _debounce = Timer(const Duration(milliseconds: 500), () {
       runSearch(query.trim());
     });
@@ -91,11 +90,6 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
         '?q=${Uri.encodeQueryComponent(query)}'
         '&format=json&limit=6',
       );
-      // NOTE: deliberately not setting a 'User-Agent' header — browsers
-      // (Flutter Web) refuse to let JS set that header at all, so it
-      // either gets silently stripped or can cause the request to be
-      // treated inconsistently across browsers. Nominatim's CORS
-      // config allows anonymous browser requests without it.
       final response = await http.get(uri).timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
@@ -153,9 +147,6 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
       final position = await Geolocator.getCurrentPosition();
       final newPos = LatLng(position.latitude, position.longitude);
 
-      // The sheet may have been closed while we were awaiting the
-      // permission prompt / GPS fix above — never touch state or the
-      // map controller after that.
       if (!mounted) return;
 
       setState(() {
@@ -205,8 +196,6 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 14),
-
-            // ===== Search box =====
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFFF5F5F5),
@@ -246,7 +235,6 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
                 ),
               ),
             ),
-
             if (showResults)
               Container(
                 margin: const EdgeInsets.only(top: 6),
@@ -293,9 +281,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
                         },
                       ),
               ),
-
             const SizedBox(height: 14),
-
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: SizedBox(
@@ -407,13 +393,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   double? selectedLat;
   double? selectedLng;
 
-  // True while we're reverse-geocoding the picked lat/lng into a city
-  // name. Drives the small spinner in the city field so it's obvious
-  // the field is being auto-filled rather than sitting blank.
   bool resolvingCity = false;
-
-  // Same idea for the location field — true while we're turning the
-  // raw lat/lng into a readable address.
   bool resolvingAddress = false;
 
   final List<String> categoryOptions = const [
@@ -425,11 +405,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     "Food",
   ];
 
-  // Starting suggestion set for the city autocomplete — the field
-  // itself accepts any typed value, this list just powers the
-  // suggestion dropdown as the user types. Still here as a manual
-  // fallback/override for whenever reverse geocoding can't resolve a
-  // city (offline, remote pin, rate-limited, etc).
   final List<String> cityOptions = const [
     "Hyderabad",
     "Chennai",
@@ -457,8 +432,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     "Guwahati",
   ];
 
-  // Suggestions filtered live against whatever the user has typed so
-  // far in the city field.
   List<String> get filteredCityOptions {
     final query = cityController.text.trim().toLowerCase();
     if (query.isEmpty) return cityOptions;
@@ -470,8 +443,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   @override
   void initState() {
     super.initState();
-    // Suggestions only ever show while the field is focused AND has
-    // text in it — never on load, never after tapping away.
     cityFocusNode.addListener(() {
       setState(() {
         showCitySuggestions =
@@ -548,27 +519,98 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   }
 
   // ===========================
-  // Reverse geocoding — turns the lat/lng the user picked on the map
-  // into (a) a city name and (b) a short human-readable address, so
-  // neither field is left showing raw coordinates. Uses the same
-  // free Nominatim service as the location search (no API key or
-  // billing needed). One request covers both fields since they come
-  // from the same "address" breakdown Nominatim returns.
-  //
-  // FIX: this previously (1) sent a 'User-Agent' header, which
-  // browsers refuse to let JS set at all — Flutter Web builds could
-  // have this silently dropped or the whole request treated
-  // inconsistently, causing reverse geocoding to fail more often than
-  // it should; and (2) fell back to `null` for the address whenever
-  // Nominatim's address breakdown didn't include road/neighbourhood/
-  // suburb/state, even when Nominatim DID successfully resolve the
-  // point and returned a perfectly good `display_name` — so the
-  // location field was left showing raw "lat, lng" far more often
-  // than necessary. Both fixed below: no more User-Agent header, and
-  // `display_name` is now used as the fallback any time the short
-  // address can't be built, so raw coordinates only ever show if the
-  // network call itself genuinely fails.
+  // Category picker (bottom sheet) — plain list style: no icons, no
+  // checkmarks, alternating row backgrounds, selected row highlighted
+  // in light grey.
   // ===========================
+  Future<void> pickCategory() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    height: 4,
+                    width: 40,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const Text(
+                  "Categories",
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade200),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(categoryOptions.length, (index) {
+                      final c = categoryOptions[index];
+                      final bool isSelected =
+                          categoryController.text.trim().toLowerCase() ==
+                              c.toLowerCase();
+                      final bool isEven = index % 2 == 0;
+
+                      return InkWell(
+                        onTap: () => Navigator.pop(context, c),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 16),
+                          color: isSelected
+                              ? Colors.grey.shade300
+                              : (isEven ? Colors.white : Colors.grey.shade100),
+                          child: Text(
+                            c,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: AppColors.textPrimary,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selected != null) {
+      setState(() {
+        categoryController.text = selected;
+      });
+    }
+  }
+
   Future<Map<String, String?>> reverseGeocode(double lat, double lng) async {
     try {
       final uri = Uri.parse(
@@ -584,14 +626,9 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       final fullDisplayName = data['display_name'] as String?;
 
       if (address == null) {
-        // Nominatim still resolved the point even if it couldn't break
-        // it into components — show that instead of raw coordinates.
         return {'city': null, 'displayName': fullDisplayName};
       }
 
-      // Nominatim doesn't tag every place the same way — a big metro
-      // area comes back as "city", a smaller town as "town", etc.
-      // Fall through the likely fields in order of specificity.
       final cityRaw = address['city'] ??
           address['town'] ??
           address['village'] ??
@@ -606,9 +643,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
 
       return {
         'city': city,
-        // Falls back to Nominatim's own full display_name — still a
-        // real, readable place description — rather than leaving this
-        // null and forcing the caller to keep showing coordinates.
         'displayName': shortAddress ?? fullDisplayName,
       };
     } catch (_) {
@@ -616,12 +650,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     }
   }
 
-  // Builds a short, readable address like "MG Road, Chennai, Tamil
-  // Nadu" instead of Nominatim's full display_name (which tends to
-  // be a long comma-separated dump including postal code, country,
-  // etc — too long to sit nicely in the location field). Returns null
-  // if none of the expected pieces are present — callers should fall
-  // back to the full display_name in that case, not to coordinates.
   String? _buildShortAddress(Map<String, dynamic> address, {String? fallbackCity}) {
     final parts = <String>[];
 
@@ -643,14 +671,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     return parts.isEmpty ? null : parts.join(', ');
   }
 
-  // ===========================
-  // Normalizes a city string to a consistent "Title Case" format
-  // (e.g. "chennai", "CHENNAI", " Chennai " all become "Chennai").
-  // The website's city filter does an exact string match against
-  // whatever is saved here, so without this, meetups in the same
-  // city but typed with different casing/spacing would be treated
-  // as different cities and silently split the filter.
-  // ===========================
   String normalizeCityName(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return trimmed;
@@ -662,13 +682,8 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
         .join(' ');
   }
 
-  // ===========================
-  // Location picker (bottom sheet) — hosts _LocationPickerSheet, its
-  // own StatefulWidget, so async GPS/permission/search calls can't
-  // crash after the sheet is closed.
-  // ===========================
   Future<void> pickLocation() async {
-    LatLng initialPosition = const LatLng(17.3850, 78.4867); // Hyderabad default
+    LatLng initialPosition = const LatLng(17.3850, 78.4867);
     if (selectedLat != null && selectedLng != null) {
       initialPosition = LatLng(selectedLat!, selectedLng!);
     }
@@ -689,10 +704,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     setState(() {
       selectedLat = lat;
       selectedLng = lng;
-      // Show the coordinates immediately as a placeholder — swapped
-      // for a readable address below once reverse geocoding resolves.
-      // If it genuinely fails, the coordinates stay as the last-resort
-      // fallback and we tell the user to type it in by hand.
       locationController.text = "${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}";
       resolvingCity = true;
       resolvingAddress = true;
@@ -712,10 +723,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       }
     });
 
-    // Only reachable if reverseGeocode() genuinely failed (network
-    // error, timeout, or Nominatim returned nothing usable at all) —
-    // the coordinate fallback text is still sitting in the field, so
-    // let the user know they should type the place name themselves.
     if (geo['displayName'] == null) {
       Get.snackbar(
         "Couldn't Detect Address",
@@ -798,11 +805,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       return;
     }
 
-    // FIX: creator identity was never being recorded. createdBy stayed
-    // at its default '' and organizerName stayed at its default "You"
-    // for every meetup, no matter who actually created it — which is
-    // what made the details screen unable to tell owners from everyone
-    // else. Both are now pulled from the logged-in Firebase user.
     final currentUser = FirebaseAuth.instance.currentUser;
     final String creatorUid = currentUser?.uid ?? '';
     final String creatorName = (currentUser?.displayName?.trim().isNotEmpty ?? false)
@@ -815,7 +817,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       category: categoryController.text.trim(),
       location: locationController.text.trim(),
       city: normalizeCityName(cityController.text.trim()),
-      image: "assets/experiences/trek.webp", // placeholder until real upload wired
+      image: "assets/experiences/trek.webp",
       date: combinedDate,
       endDate: combinedEndDate,
       price: double.parse(priceController.text.trim()),
@@ -977,44 +979,38 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
             ),
 
             fieldLabel("CATEGORY"),
-            TextField(
-              controller: categoryController,
-              onChanged: (_) => setState(() {}),
-              decoration: fieldDecoration("e.g. Adventure, Coffee, Trekking..."),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: categoryOptions.map((c) {
-                final bool isSelected =
-                    categoryController.text.trim().toLowerCase() == c.toLowerCase();
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      categoryController.text = c;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppColors.primary : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isSelected ? AppColors.primary : Colors.grey.shade300,
+            GestureDetector(
+              onTap: pickCategory,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.category_outlined,
+                        size: 18, color: AppColors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        categoryController.text.isEmpty
+                            ? "Select a category"
+                            : categoryController.text,
+                        style: TextStyle(
+                          color: categoryController.text.isEmpty
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                    child: Text(
-                      c,
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : AppColors.textPrimary,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
+                    const Icon(Icons.chevron_right,
+                        size: 20, color: AppColors.textSecondary),
+                  ],
+                ),
+              ),
             ),
 
             fieldLabel("DESCRIPTION"),
@@ -1071,9 +1067,6 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Auto-filled from the location you pick above. Still
-                // editable by hand as a fallback for when reverse
-                // geocoding can't resolve a city for the pin.
                 TextField(
                   controller: cityController,
                   focusNode: cityFocusNode,

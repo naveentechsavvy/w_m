@@ -144,7 +144,9 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   }
 
   // ============================================================
-  // PICK PROFILE IMAGE
+  // PICK PROFILE IMAGE (used while inside full Edit mode — pairs
+  // with the "UPDATE PROFILE" button, which uploads via
+  // uploadAvatarIfNeeded() below)
   // ============================================================
 
   Future<void> pickAvatar() async {
@@ -182,7 +184,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   }
 
   // ============================================================
-  // UPLOAD PROFILE IMAGE
+  // UPLOAD PROFILE IMAGE (used by updateProfile() during full edit)
   // ============================================================
 
   Future<String?> uploadAvatarIfNeeded() async {
@@ -236,6 +238,92 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
           uploadingAvatar = false;
         });
       }
+    }
+  }
+
+  // ============================================================
+  // QUICK AVATAR CHANGE
+  // FIX: previously the only way to change your photo was to tap
+  // "Edit profile" first, THEN tap a tiny camera badge on the
+  // avatar — tapping the photo directly on the main profile view
+  // did nothing at all. This lets a tap on the photo itself (from
+  // the normal, non-editing profile view) immediately open the
+  // picker and upload right away, without entering full edit mode.
+  // ============================================================
+
+  Future<void> quickChangeAvatar() async {
+    if (saving || uploadingAvatar) return;
+
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 800,
+      );
+
+      if (picked == null) return;
+
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+
+      setState(() {
+        avatarBytes = bytes;
+      });
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        debugPrint("[ProfileView] No logged-in Firebase user.");
+        return;
+      }
+
+      setState(() => uploadingAvatar = true);
+
+      final ref = FirebaseStorage.instance.ref().child("avatars/$uid.jpg");
+      await ref.putData(bytes, SettableMetadata(contentType: "image/jpeg"));
+      final url = await ref.getDownloadURL();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString("avatar_url", url);
+
+      await FirebaseFirestore.instance.collection("users").doc(uid).set(
+        {
+          "photoUrl": url,
+          "updatedAt": FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        avatarUrl = url;
+        avatarBytes = null;
+      });
+
+      Get.snackbar(
+        "Photo Updated",
+        "Your profile photo has been updated.",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.primary,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+      );
+    } catch (e) {
+      debugPrint("[ProfileView] Quick avatar change failed: $e");
+      if (!mounted) return;
+      setState(() => avatarBytes = null);
+      Get.snackbar(
+        "Photo Upload Failed",
+        "Unable to update your profile photo. Please try again.",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+      );
+    } finally {
+      if (mounted) setState(() => uploadingAvatar = false);
     }
   }
 
@@ -473,12 +561,17 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
               : null,
         ),
 
-        if (isEditing)
+        // Small camera badge shown whenever a change is in progress
+        // (quick change from the main view) or while inside full
+        // Edit mode — either way it doubles as an uploading spinner.
+        if (isEditing || uploadingAvatar)
           Positioned(
             bottom: 0,
             right: -2,
             child: GestureDetector(
-              onTap: saving ? null : pickAvatar,
+              onTap: saving
+                  ? null
+                  : (isEditing ? pickAvatar : null),
               child: Container(
                 width: 34,
                 height: 34,
@@ -862,6 +955,10 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
       children: [
         // --------------------------------------------------------
         // TOP CARD: avatar + name + "Edit profile" link
+        // FIX: the avatar here now has its own GestureDetector
+        // calling quickChangeAvatar() directly — previously tapping
+        // the photo on this screen (before entering Edit mode) did
+        // nothing at all.
         // --------------------------------------------------------
 
         Container(
@@ -881,7 +978,10 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              profileImage(radius: 40),
+              GestureDetector(
+                onTap: quickChangeAvatar,
+                child: profileImage(radius: 40),
+              ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(

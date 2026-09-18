@@ -114,36 +114,45 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 // narrow down meetups. On narrow screens this wraps to
                 // a Column instead so the city field never gets
                 // squeezed unreadably thin.
+                //
+                // FIX: Categories used to always render, even before
+                // any city was picked — cluttering the screen with a
+                // filter that isn't relevant yet. It now only appears
+                // once a real city has been selected (not the "All"
+                // default / empty field).
                 // ===========================
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final isNarrow = constraints.maxWidth < 640;
 
-                    // FIX: Categories was a horizontally-scrolling row
-                    // of pill chips — once the category list grows it
-                    // gets cramped and requires side-scrolling to find
-                    // options. Replaced with a dropdown, styled the
-                    // same as the City search box below it.
-                    final categoriesBlock = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Categories",
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        Obx(() {
-                          final currentValue =
-                              controller.categories.contains(
-                            controller.selectedCategory.value,
-                          )
-                              ? controller.selectedCategory.value
-                              : controller.categories.first;
+                    final categoriesBlock = Obx(() {
+                      final citySelected =
+                          controller.selectedCity.value != "All" &&
+                              controller.selectedCity.value.trim().isNotEmpty;
 
-                          return Container(
+                      if (!citySelected) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final currentValue =
+                          controller.categories.contains(
+                        controller.selectedCategory.value,
+                      )
+                          ? controller.selectedCategory.value
+                          : controller.categories.first;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Categories",
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 15),
+                          Container(
                             width: double.infinity,
                             padding:
                                 const EdgeInsets.symmetric(horizontal: 16),
@@ -179,10 +188,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
                                 },
                               ),
                             ),
-                          );
-                        }),
-                      ],
-                    );
+                          ),
+                        ],
+                      );
+                    });
 
                     final cityBlock = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
