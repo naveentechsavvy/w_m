@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../app/theme/colors.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../controllers/chat_controller.dart';
 import '../models/message_model.dart';
 
@@ -16,8 +17,6 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
-  /// Formats a DateTime as "h:mm AM/PM" without pulling in intl just
-  /// for this one label.
   String _formatTime(DateTime dt) {
     final hour24 = dt.hour;
     final minute = dt.minute.toString().padLeft(2, '0');
@@ -27,8 +26,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _scrollToBottom() {
-    // Runs after the frame builds, once the ListView actually knows its
-    // new content height, so jumping to maxScrollExtent lands correctly.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
@@ -77,6 +74,83 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  /// Organizer-only sheet for someone else's message: remove it, or
+  /// mute the person who sent it. Separate from _showMessageActions
+  /// above so a regular member long-pressing someone else's message
+  /// (canAct == false in that case) never sees this.
+  void _showOrganizerActions(
+    BuildContext context,
+    ChatController controller,
+    Message message,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text('Remove message',
+                    style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _confirmModerateDelete(context, controller, message);
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.volume_off, color: AppColors.textPrimary),
+                title: Text('Mute ${message.senderName}'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _showMuteDurationPicker(context, controller, message.senderId,
+                      message.senderName);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmModerateDelete(
+    BuildContext context,
+    ChatController controller,
+    Message message,
+  ) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Remove this message?'),
+          content: const Text(
+            'This removes it for everyone in the chat. This can\'t be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                controller.moderateDeleteMessage(message);
+              },
+              child: const Text('Remove', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _confirmDelete(
     BuildContext context,
     ChatController controller,
@@ -103,6 +177,53 @@ class _ChatScreenState extends State<ChatScreen> {
               child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  void _showMuteDurationPicker(
+    BuildContext context,
+    ChatController controller,
+    String userId,
+    String userName,
+  ) {
+    final options = <String, Duration>{
+      '15 minutes': const Duration(minutes: 15),
+      '1 hour': const Duration(hours: 1),
+      '24 hours': const Duration(hours: 24),
+      '7 days': const Duration(days: 7),
+    };
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Mute $userName for...',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              ...options.entries.map(
+                (entry) => ListTile(
+                  title: Text(entry.key),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    controller.muteMember(userId, entry.value);
+                  },
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -149,26 +270,14 @@ class _ChatScreenState extends State<ChatScreen> {
               final messages = controller.messages;
 
               if (messages.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Text(
-                      controller.chatType == ChatType.group
-                          ? "No messages yet. Say hi to the group!"
-                          : "No messages yet. Say hi!",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
+                return EmptyState(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  title: controller.chatType == ChatType.group
+                      ? "No messages yet. Say hi to the group!"
+                      : "No messages yet. Say hi!",
                 );
               }
 
-              // Every rebuild of this Obx (new/edited/deleted message)
-              // re-scrolls to the bottom so the latest message is
-              // always visible, keyboard open or closed.
               _scrollToBottom();
 
               final showSenderLabel = controller.chatType == ChatType.group;
@@ -183,6 +292,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       message.senderId == controller.currentUid;
                   final bool canAct =
                       !message.isDeleted && controller.canEditOrDelete(message);
+                  // Organizer can act on anyone ELSE's message (their own
+                  // is already covered by canAct above via the normal
+                  // edit/delete sheet).
+                  final bool canModerate = !isMine &&
+                      !message.isDeleted &&
+                      controller.isOrganizer;
 
                   final bubble = Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -291,7 +406,16 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                             child: bubble,
                           )
-                        : bubble,
+                        : (canModerate
+                            ? GestureDetector(
+                                onLongPress: () => _showOrganizerActions(
+                                  context,
+                                  controller,
+                                  message,
+                                ),
+                                child: bubble,
+                              )
+                            : bubble),
                   );
                 },
               );
@@ -328,67 +452,99 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             );
           }),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          Obx(() {
+            final until = controller.mutedUntil.value;
+            if (until == null || !until.isAfter(DateTime.now())) {
+              return const SizedBox.shrink();
+            }
+            return Container(
+              width: double.infinity,
+              color: Colors.red.withOpacity(0.08),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: controller.textController,
-                      textCapitalization: TextCapitalization.sentences,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => controller.send(),
-                      decoration: InputDecoration(
-                        hintText: "Type a message...",
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
+                  const Icon(Icons.volume_off, size: 16, color: Colors.red),
                   const SizedBox(width: 8),
-                  Obx(
-                    () => Material(
-                      color: AppColors.primary,
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: controller.isSending.value
-                            ? null
-                            : controller.send,
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: controller.isSending.value
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : Icon(
-                                  controller.editingMessage.value != null
-                                      ? Icons.check
-                                      : Icons.send_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                        ),
+                  Expanded(
+                    child: Text(
+                      'You are muted until ${_formatTime(until)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red,
                       ),
                     ),
                   ),
                 ],
               ),
+            );
+          }),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: Obx(() {
+                final muted = controller.isMuted;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller.textController,
+                        enabled: !muted,
+                        textCapitalization: TextCapitalization.sentences,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => controller.send(),
+                        decoration: InputDecoration(
+                          hintText:
+                              muted ? "You're muted" : "Type a message...",
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Obx(
+                      () => Material(
+                        color: muted ? Colors.grey : AppColors.primary,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: (controller.isSending.value || muted)
+                              ? null
+                              : controller.send,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: controller.isSending.value
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Icon(
+                                    controller.editingMessage.value != null
+                                        ? Icons.check
+                                        : Icons.send_rounded,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }),
             ),
           ),
         ],

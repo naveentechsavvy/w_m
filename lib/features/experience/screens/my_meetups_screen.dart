@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../app/theme/colors.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../controllers/join_requests_controller.dart';
 import '../controllers/my_meetups_controller.dart';
 import '../models/experience_model.dart';
@@ -247,15 +248,9 @@ class MyMeetupsScreen extends StatelessWidget {
   }
 
   Widget _emptyState(String text) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 15),
-        ),
-      ),
+    return EmptyState(
+      icon: Icons.event_note_outlined,
+      title: text,
     );
   }
 }

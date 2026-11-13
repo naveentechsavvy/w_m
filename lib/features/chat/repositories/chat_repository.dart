@@ -4,9 +4,6 @@ import '../models/message_model.dart';
 class ChatRepository {
   final ChatDataSource datasource = ChatDataSource();
 
-  /// Deterministic room id for a 1:1 (private/organizer) thread.
-  /// Exposed here so callers (controller) don't need to reach into the
-  /// datasource layer directly.
   static String buildDirectRoomId({
     required String meetupId,
     required String uidA,
@@ -54,4 +51,29 @@ class ChatRepository {
 
   Future<void> deleteMessage(String messageId) =>
       datasource.deleteMessage(messageId);
+
+  Future<void> muteUser({
+    required String roomId,
+    required String userId,
+    required DateTime mutedUntil,
+    required String mutedBy,
+  }) =>
+      datasource.muteUser(
+        roomId: roomId,
+        userId: userId,
+        mutedUntil: mutedUntil,
+        mutedBy: mutedBy,
+      );
+
+  Future<void> unmuteUser({
+    required String roomId,
+    required String userId,
+  }) =>
+      datasource.unmuteUser(roomId: roomId, userId: userId);
+
+  Stream<DateTime?> streamMuteStatus({
+    required String roomId,
+    required String userId,
+  }) =>
+      datasource.streamMuteStatus(roomId: roomId, userId: userId);
 }

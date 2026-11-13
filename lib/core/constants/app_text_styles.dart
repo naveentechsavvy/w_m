@@ -6,36 +6,42 @@ class AppTextStyles {
   AppTextStyles._();
 
   static TextStyle heading1 = GoogleFonts.poppins(
-    fontSize: 32,
-    fontWeight: FontWeight.bold,
+    fontSize: 30,
+    fontWeight: FontWeight.w700,
+    height: 1.25,
     color: AppColors.textPrimary,
   );
 
   static TextStyle heading2 = GoogleFonts.poppins(
     fontSize: 24,
     fontWeight: FontWeight.w700,
+    height: 1.3,
     color: AppColors.textPrimary,
   );
 
   static TextStyle heading3 = GoogleFonts.poppins(
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: FontWeight.w600,
+    height: 1.35,
     color: AppColors.textPrimary,
   );
 
   static TextStyle body = GoogleFonts.poppins(
-    fontSize: 16,
+    fontSize: 15,
+    height: 1.5,
     color: AppColors.textSecondary,
   );
 
   static TextStyle caption = GoogleFonts.poppins(
     fontSize: 13,
+    height: 1.4,
     color: AppColors.textSecondary,
   );
 
   static TextStyle button = GoogleFonts.poppins(
-    fontSize: 17,
+    fontSize: 16,
     color: Colors.white,
     fontWeight: FontWeight.w600,
+    letterSpacing: 0.2,
   );
 }

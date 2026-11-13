@@ -3,46 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/message_model.dart';
 
-/// Raw Firestore access for the `messages` collection.
-/// Chat needs live updates (unlike the poll-on-mutation pattern used by
-/// join_requests), so this exposes a stream instead of Futures for reads.
-///
-/// MIGRATION NOTE: existing group-chat messages written before this change
-/// won't have a `roomId` field. Message.fromMap() falls back to `meetupId`
-/// for those docs, so old group messages still display correctly. No
-/// backfill script is required for group chat. There is no pre-existing
-/// data to migrate for private/organizer chat since those didn't exist yet.
-/// The same applies to isEdited/isDeleted — pre-existing docs default to
-/// false via Message.fromMap(), no backfill needed there either.
-///
-/// QUERY-VS-RULES NOTE: streamMessages() branches into two different
-/// query shapes (group vs private/organizer) on purpose. Firestore
-/// rejects a list query with permission-denied unless the query's own
-/// `where` filters let it statically prove every possible returned
-/// document satisfies the security rule — a filter on `roomId` alone
-/// isn't enough, since the read rule also checks `chatType`/
-/// `participants`, fields the query wasn't filtering on. Adding a
-/// matching filter for each case (chatType == 'group', or
-/// participants arrayContains uid) is what makes Firestore able to
-/// prove it and allow the read.
-///
-/// FIRESTORE INDEXES: this needs TWO composite indexes now:
-///   (roomId ASC, chatType ASC, sentAt ASC)        - for group chat
-///   (roomId ASC, participants ARRAY, sentAt ASC)  - for private/organizer
-/// Firestore will show a console link to auto-create whichever one is
-/// missing the first time each query type runs.
-///
-/// PERMISSION NOTE: edit/delete ownership + time-window checks happen in
-/// ChatController.canEditOrDelete() using data already streamed to the
-/// client, so this layer doesn't re-fetch-and-check before writing. For
-/// production hardening, mirror the same senderId + time-window rule in
-/// Firestore security rules so it isn't client-enforced only.
 class ChatDataSource {
   final _messages = FirebaseFirestore.instance.collection('messages');
 
-  /// Deterministic room id for a 1:1 thread, independent of who opens
-  /// the chat first. Sorting the two uids guarantees uidA/uidB order
-  /// doesn't produce two different rooms for the same pair of people.
+  /// One doc per (room, user) tracking a temporary mute the organizer
+  /// placed on that user in that room. Doc id is deterministic so
+  /// muting the same person twice just overwrites the old mute instead
+  /// of creating duplicate active mutes.
+  final _mutes = FirebaseFirestore.instance.collection('chat_mutes');
+
   static String buildDirectRoomId({
     required String meetupId,
     required String uidA,
@@ -52,10 +21,9 @@ class ChatDataSource {
     return '${meetupId}_${sorted[0]}_${sorted[1]}';
   }
 
-  /// [currentUid] is required for private/organizer chat so the query
-  /// can filter `participants arrayContains uid` — matching the security
-  /// rule so Firestore can prove the read is allowed (see QUERY-VS-RULES
-  /// NOTE above). Ignored for group chat.
+  static String _muteDocId(String roomId, String userId) =>
+      '${roomId}_$userId';
+
   Stream<List<Message>> streamMessages({
     required String roomId,
     required ChatType chatType,
@@ -75,11 +43,6 @@ class ChatDataSource {
         .map((snap) => snap.docs.map((d) => Message.fromDoc(d)).toList());
   }
 
-  /// [otherUserId] is required for private/organizer messages so the
-  /// stored [Message.participants] can be set to exactly the two uids
-  /// allowed to read this thread — Firestore security rules check this
-  /// field. Left null (and participants omitted) for group chat, where
-  /// membership isn't enforced at the message level.
   Future<void> sendMessage({
     required String roomId,
     required String meetupId,
@@ -116,9 +79,6 @@ class ChatDataSource {
     await _messages.add(message.toMap());
   }
 
-  /// Updates the text of an existing message and marks it as edited.
-  /// Ownership + time-window checks are the caller's responsibility (see
-  /// PERMISSION NOTE above) — this method trusts messageId is editable.
   Future<void> editMessage({
     required String messageId,
     required String newText,
@@ -130,13 +90,55 @@ class ChatDataSource {
     });
   }
 
-  /// Soft-deletes a message: the doc is kept (so stream ordering never
-  /// shifts) but isDeleted flips true and text is cleared. The UI renders
-  /// a placeholder instead of text for any message with isDeleted == true.
+  /// Soft-deletes a message. Used both for a user deleting their own
+  /// message AND for an organizer removing someone else's — ownership
+  /// is decided by the caller (ChatController), not here, same as the
+  /// existing PERMISSION NOTE above already established for edit/delete.
   Future<void> deleteMessage(String messageId) async {
     await _messages.doc(messageId).update({
       'isDeleted': true,
       'text': '',
+    });
+  }
+
+  /// Mutes [userId] in [roomId] until [mutedUntil]. Overwrites any
+  /// existing mute for that user in that room (set, not update — the
+  /// doc may not exist yet).
+  Future<void> muteUser({
+    required String roomId,
+    required String userId,
+    required DateTime mutedUntil,
+    required String mutedBy,
+  }) async {
+    await _mutes.doc(_muteDocId(roomId, userId)).set({
+      'roomId': roomId,
+      'userId': userId,
+      'mutedUntil': Timestamp.fromDate(mutedUntil),
+      'mutedBy': mutedBy,
+    });
+  }
+
+  /// Lifts a mute early. Deletes the doc rather than clearing
+  /// mutedUntil so streamMuteStatus() naturally returns null again.
+  Future<void> unmuteUser({
+    required String roomId,
+    required String userId,
+  }) async {
+    await _mutes.doc(_muteDocId(roomId, userId)).delete();
+  }
+
+  /// Live mute expiry for [userId] in [roomId], or null if not muted.
+  /// Streamed (not fetched once) so if the organizer mutes/unmutes
+  /// while the muted user has the chat open, their input bar
+  /// updates immediately without needing to reopen the screen.
+  Stream<DateTime?> streamMuteStatus({
+    required String roomId,
+    required String userId,
+  }) {
+    return _mutes.doc(_muteDocId(roomId, userId)).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      final ts = doc.data()?['mutedUntil'] as Timestamp?;
+      return ts?.toDate();
     });
   }
 }

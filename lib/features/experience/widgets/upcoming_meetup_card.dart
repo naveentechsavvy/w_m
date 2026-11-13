@@ -20,41 +20,84 @@ class UpcomingMeetupCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(AppSizes.md),
+      padding: const EdgeInsets.all(AppSizes.md + 2),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(AppSizes.radiusMedium),
+        border: Border.all(color: AppColors.divider, width: 0.8),
         boxShadow: const [
-          BoxShadow(blurRadius: 8, color: Colors.black12, offset: Offset(0, 4)),
+          BoxShadow(
+            blurRadius: 14,
+            color: AppColors.shadow,
+            offset: Offset(0, 6),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(experience.title, style: AppTextStyles.heading3),
-          const SizedBox(height: AppSizes.xs),
           Text(
-            "${DateFormat('EEEE').format(experience.date)} • ${DateFormat('h:mm a').format(experience.date)}",
-            style: AppTextStyles.body,
+            experience.title,
+            style: AppTextStyles.heading3,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: AppSizes.xs),
-          Text("${experience.joined} Participants", style: AppTextStyles.body),
-          const SizedBox(height: AppSizes.sm),
+          const SizedBox(height: 12),
+          _InfoRow(
+            icon: Icons.calendar_today_outlined,
+            text:
+                "${DateFormat('EEEE').format(experience.date)} • ${DateFormat('h:mm a').format(experience.date)}",
+          ),
+          const SizedBox(height: 8),
+          _InfoRow(
+            icon: Icons.people_outline,
+            text: "${experience.joined} Participants",
+          ),
+          const SizedBox(height: 14),
+          const Divider(),
+          const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(
+            child: TextButton.icon(
               onPressed: onViewTap,
-              child: const Text(
-                "View Meetup →",
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              iconAlignment: IconAlignment.end,
+              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              label: const Text("View Meetup"),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InfoRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: AppColors.primaryTint,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 16, color: AppColors.primary),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: AppTextStyles.body.copyWith(fontSize: 14),
+          ),
+        ),
+      ],
     );
   }
 }

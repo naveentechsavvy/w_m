@@ -1,0 +1,231 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------
+    // HELPERS
+    // ---------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(uid())).data.role == 'admin';
+    }
+
+    // Fields changed by this update
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function meetupCreator(meetupId) {
+      return get(/databases/$(database)/documents/meetups/$(meetupId)).data.createdBy;
+    }
+
+    // ---------------------------------------------------------
+    // USERS
+    // Anyone signed in can read profiles (names in chat, friends,
+    // participants). Users write only their own doc and can never
+    // set their own `role` (prevents self-promotion to admin).
+    // ---------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn() && uid() == userId &&
+        !('role' in request.resource.data);
+
+      allow update: if isSignedIn() && uid() == userId &&
+        !changed().hasAny(['role']);
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------
+    // MEETUPS
+    // ---------------------------------------------------------
+    match /meetups/{meetupId} {
+      allow read: if true;
+
+      allow create: if isSignedIn() &&
+        request.resource.data.createdBy == uid();
+
+      // Creator: full control (edit, cancel, approve join requests).
+      allow update: if isSignedIn() && resource.data.createdBy == uid();
+
+      // Anyone signed in: only the rating summary, which the app
+      // recalculates after a review is posted.
+      allow update: if isSignedIn() &&
+        changed().hasOnly(['avgRating', 'reviewCount']);
+
+      allow delete: if isSignedIn() && resource.data.createdBy == uid();
+    }
+
+    // ---------------------------------------------------------
+    // JOIN REQUESTS
+    // ---------------------------------------------------------
+    match /join_requests/{requestId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+        request.resource.data.requesterId == uid() &&
+        request.resource.data.status == 'pending';
+
+      // Requester can only cancel their own request.
+      allow update: if isSignedIn() &&
+        resource.data.requesterId == uid() &&
+        changed().hasOnly(['status']) &&
+        request.resource.data.status == 'cancelled';
+
+      // Meetup creator can approve or reject.
+      allow update: if isSignedIn() &&
+        meetupCreator(resource.data.meetupId) == uid() &&
+        changed().hasOnly(['status']) &&
+        request.resource.data.status in ['approved', 'rejected'];
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------
+    // FRIEND REQUESTS (unchanged)
+    // ---------------------------------------------------------
+    match /friend_requests/{requestId} {
+      allow read: if isSignedIn() &&
+        (resource.data.senderId == uid() ||
+         resource.data.receiverId == uid());
+
+      allow create: if isSignedIn() &&
+        request.resource.data.senderId == uid();
+
+      allow update: if isSignedIn() &&
+        resource.data.receiverId == uid();
+
+      allow delete: if isSignedIn() &&
+        (resource.data.senderId == uid() ||
+         resource.data.receiverId == uid());
+    }
+
+    // ---------------------------------------------------------
+    // MESSAGES (chat)
+    // ---------------------------------------------------------
+    match /messages/{messageId} {
+      allow read: if isSignedIn() &&
+        (resource.data.chatType == 'group' ||
+         uid() in resource.data.participants);
+
+      allow create: if isSignedIn() &&
+        request.resource.data.senderId == uid() &&
+        (request.resource.data.chatType == 'group' ||
+         (request.resource.data.participants is list &&
+          uid() in request.resource.data.participants));
+
+      // Sender: edit or delete own message.
+      allow update: if isSignedIn() && resource.data.senderId == uid();
+
+      // Meetup organizer: soft-delete someone else's message only.
+      allow update: if isSignedIn() &&
+        meetupCreator(resource.data.meetupId) == uid() &&
+        changed().hasOnly(['isDeleted', 'text']) &&
+        request.resource.data.isDeleted == true &&
+        request.resource.data.text == '';
+
+      allow delete: if isSignedIn() && resource.data.senderId == uid();
+    }
+
+    // ---------------------------------------------------------
+    // CHAT MUTES (doc id = <roomId>_<userId>; group roomId = meetupId)
+    // ---------------------------------------------------------
+    match /chat_mutes/{muteId} {
+      // resource == null lets the app check "am I muted?" when no
+      // mute doc exists yet.
+      allow read: if isSignedIn() &&
+        (resource == null ||
+         resource.data.userId == uid() ||
+         resource.data.mutedBy == uid());
+
+      allow create, update: if isSignedIn() &&
+        request.resource.data.mutedBy == uid() &&
+        meetupCreator(request.resource.data.roomId) == uid();
+
+      allow delete: if isSignedIn() &&
+        meetupCreator(resource.data.roomId) == uid();
+    }
+
+    // ---------------------------------------------------------
+    // NOTIFICATIONS
+    // The app creates notifications for other users (join approved,
+    // friend request, etc.), so any signed-in user can create one.
+    // Only the recipient can read, mark as read, or delete.
+    // ---------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == uid();
+
+      allow create: if isSignedIn() &&
+        request.resource.data.isRead == false;
+
+      allow update: if isSignedIn() &&
+        resource.data.userId == uid() &&
+        changed().hasOnly(['isRead']);
+
+      allow delete: if isSignedIn() && resource.data.userId == uid();
+    }
+
+    // ---------------------------------------------------------
+    // REVIEWS
+    // ---------------------------------------------------------
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == uid();
+
+      allow update, delete: if isSignedIn() &&
+        resource.data.userId == uid();
+    }
+
+    // ---------------------------------------------------------
+    // FOOD ITEMS (menu, managed by admin website)
+    // ---------------------------------------------------------
+    match /foodItems/{itemId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // ORDERS
+    // ---------------------------------------------------------
+    match /orders/{orderId} {
+      allow read: if isSignedIn() &&
+        (resource.data.userId == uid() || isAdmin());
+
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == uid() &&
+        request.resource.data.status == 'placed';
+
+      // Owner: record the Razorpay result only.
+      // NOTE: still trusts the app. Move this to a Cloud Function that
+      // verifies the Razorpay signature before going live.
+      allow update: if isSignedIn() &&
+        resource.data.userId == uid() &&
+        resource.data.status in ['placed', 'failed'] &&
+        request.resource.data.status in ['paid', 'failed'] &&
+        changed().hasOnly(['status', 'razorpayPaymentId', 'razorpayOrderId']);
+
+      // Admin: everything (kitchen / delivery status).
+      allow update, delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // APP CONFIG (read-only for clients)
+    // ---------------------------------------------------------
+    match /app_config/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

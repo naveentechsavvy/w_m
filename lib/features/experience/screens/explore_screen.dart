@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../../core/constants/app_text_styles.dart';
 import '../controllers/app_config_controller.dart';
 import '../controllers/subscription_controller.dart';
 import '../controllers/experience_controller.dart';
@@ -102,8 +103,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
           behavior: HitTestBehavior.translucent,
           onTap: dismissCitySuggestions,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
 
+            child: Center(
+              child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -144,14 +148,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            "Categories",
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 15),
+                          Text("Categories", style: AppTextStyles.heading3),
+                          const SizedBox(height: 12),
                           Container(
                             width: double.infinity,
                             padding:
@@ -159,6 +157,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: AppColors.divider),
                             ),
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
@@ -196,18 +195,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     final cityBlock = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          "City",
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 15),
+                        Text("City", style: AppTextStyles.heading3),
+                        const SizedBox(height: 12),
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.divider),
                           ),
                           child: TextField(
                             controller: cityController,
@@ -241,6 +235,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             decoration: InputDecoration(
                               hintText: "Search a city, e.g. Chennai",
                               border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              fillColor: Colors.transparent,
                               contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16, vertical: 14),
                               prefixIcon: const Icon(
@@ -268,6 +265,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: AppColors.divider),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.06),
@@ -334,14 +332,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 // fix yet or nothing nearby — only takes up space when
                 // there's an actual result to show.
                 // ===========================
-                const Text(
-                  "Nearby You",
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 15),
+                Text("Nearby You", style: AppTextStyles.heading3),
+                const SizedBox(height: 12),
                 Obx(() {
                   if (controller.currentPosition.value == null) {
                     return const SizedBox.shrink();
@@ -361,6 +353,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 const SizedBox(height: 20),
 
               ],
+            ),
+              ),
             ),
           ),
         ),

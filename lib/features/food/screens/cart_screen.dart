@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../controllers/food_menu_controller.dart';
 
 class CartScreen extends StatelessWidget {
@@ -29,11 +30,9 @@ class CartScreen extends StatelessWidget {
       ),
       body: Obx(() {
         if (controller.cart.isEmpty) {
-          return const Center(
-            child: Text(
-              "Your cart is empty.",
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
+          return const EmptyState(
+            icon: Icons.shopping_bag_outlined,
+            title: "Your cart is empty.",
           );
         }
 
@@ -49,10 +48,11 @@ class CartScreen extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.divider, width: 0.8),
                 boxShadow: const [
                   BoxShadow(
-                      blurRadius: 6, color: Colors.black12, offset: Offset(0, 2)),
+                      blurRadius: 12, color: AppColors.shadow, offset: Offset(0, 4)),
                 ],
               ),
               child: Row(

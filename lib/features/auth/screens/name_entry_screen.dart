@@ -118,56 +118,60 @@ class _NameEntryScreenState extends State<NameEntryScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 24),
-              const SectionTitle(
-                title: "What should we call you?",
-                subtitle:
-                    "Just your name for now \u2014 you can add the rest "
-                    "of your profile anytime later.",
-              ),
-              const SizedBox(height: 32),
-              TextField(
-                controller: _nameController,
-                textCapitalization: TextCapitalization.words,
-                autofocus: true,
-                style: AppTextStyles.body,
-                decoration: InputDecoration(
-                  hintText: "Enter your name",
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 17,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(
-                      color: AppColors.primary,
-                      width: 1.5,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 24),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryTint,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.person_outline_rounded,
+                        color: AppColors.primary,
+                        size: 30,
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 24),
+                  const SectionTitle(
+                    title: "What should we call you?",
+                    subtitle:
+                        "Just your name for now \u2014 you can add the rest "
+                        "of your profile anytime later.",
+                  ),
+                  const SizedBox(height: 32),
+                  TextField(
+                    controller: _nameController,
+                    textCapitalization: TextCapitalization.words,
+                    autofocus: true,
+                    style: AppTextStyles.body.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: "Enter your name",
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  PrimaryButton(
+                    title: "Continue",
+                    loading: _saving,
+                    onPressed: _continue,
+                  ),
+                ],
               ),
-              const SizedBox(height: 32),
-              PrimaryButton(
-                title: "Continue",
-                loading: _saving,
-                onPressed: _continue,
-              ),
-            ],
+            ),
           ),
         ),
       ),

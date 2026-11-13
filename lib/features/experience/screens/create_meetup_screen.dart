@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-
+ 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,12 +10,55 @@ import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
-
+ 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
 import '../controllers/experience_controller.dart';
 import '../models/experience_model.dart';
-
+ 
+// ===========================
+// Nominatim usage policy requires a real User-Agent identifying the
+// app; requests without one are frequently blocked/rejected, which is
+// why search + reverse geocoding were silently failing before. Put a
+// real contact/app identifier here.
+// ===========================
+const Map<String, String> _nominatimHeaders = {
+  'User-Agent': 'WeekendMasti/1.0 (contact@weekendmasti.com)',
+};
+ 
+// Hyderabad — used ONLY as a last-resort fallback if GPS is truly
+// unavailable (services off, permission denied, or lookup fails).
+const LatLng _fallbackLocation = LatLng(17.3850, 78.4867);
+ 
+/// Attempts to get the device's real current position for use as the
+/// initial map center. Falls back to [_fallbackLocation] only if
+/// location services/permissions are unavailable or the lookup fails.
+Future<LatLng> _getBestGuessLocation() async {
+  try {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return _fallbackLocation;
+ 
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return _fallbackLocation;
+    }
+ 
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 10),
+      ),
+    );
+    return LatLng(position.latitude, position.longitude);
+  } catch (_) {
+    return _fallbackLocation;
+  }
+}
+ 
 // ===========================
 // Location picker bottom sheet — its own StatefulWidget so it has a
 // real `mounted` check. Prevents "setState() called after dispose()"
@@ -27,36 +70,36 @@ import '../models/experience_model.dart';
 class _LocationPickerSheet extends StatefulWidget {
   final LatLng initialPosition;
   const _LocationPickerSheet({required this.initialPosition});
-
+ 
   @override
   State<_LocationPickerSheet> createState() => _LocationPickerSheetState();
 }
-
+ 
 class _SearchResult {
   final String displayName;
   final double lat;
   final double lon;
   _SearchResult({required this.displayName, required this.lat, required this.lon});
 }
-
+ 
 class _LocationPickerSheetState extends State<_LocationPickerSheet> {
   late LatLng pickedPosition;
   final MapController mapController = MapController();
   bool locating = false;
-
+ 
   final searchController = TextEditingController();
   final searchFocusNode = FocusNode();
   Timer? _debounce;
   bool searching = false;
   List<_SearchResult> searchResults = [];
   bool showResults = false;
-
+ 
   @override
   void initState() {
     super.initState();
     pickedPosition = widget.initialPosition;
   }
-
+ 
   @override
   void dispose() {
     _debounce?.cancel();
@@ -64,7 +107,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
     searchFocusNode.dispose();
     super.dispose();
   }
-
+ 
   void onSearchChanged(String query) {
     _debounce?.cancel();
     if (query.trim().isEmpty) {
@@ -78,7 +121,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
       runSearch(query.trim());
     });
   }
-
+ 
   Future<void> runSearch(String query) async {
     setState(() {
       searching = true;
@@ -88,12 +131,15 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
       final uri = Uri.parse(
         'https://nominatim.openstreetmap.org/search'
         '?q=${Uri.encodeQueryComponent(query)}'
-        '&format=json&limit=6',
+        '&format=json&limit=6'
+        '&countrycodes=in', // bias results toward India; drop this if you want global search
       );
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-
+      final response = await http
+          .get(uri, headers: _nominatimHeaders)
+          .timeout(const Duration(seconds: 10));
+ 
       if (!mounted) return;
-
+ 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         setState(() {
@@ -106,16 +152,19 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
               .toList();
         });
       } else {
+        debugPrint(
+            '[LocationSearch] Nominatim returned ${response.statusCode}: ${response.body}');
         setState(() => searchResults = []);
       }
     } catch (e) {
+      debugPrint('[LocationSearch] search failed: $e');
       if (!mounted) return;
       setState(() => searchResults = []);
     } finally {
       if (mounted) setState(() => searching = false);
     }
   }
-
+ 
   void selectSearchResult(_SearchResult result) {
     final newPos = LatLng(result.lat, result.lon);
     setState(() {
@@ -127,10 +176,18 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
     searchFocusNode.unfocus();
     mapController.move(newPos, 16);
   }
-
+ 
   Future<void> useCurrentLocation() async {
     setState(() => locating = true);
     try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (!mounted) return;
+        Get.snackbar("Location Services Off",
+            "Please turn on GPS/location services and try again");
+        return;
+      }
+ 
       final permission = await Geolocator.checkPermission();
       LocationPermission finalPermission = permission;
       if (permission == LocationPermission.denied) {
@@ -143,24 +200,30 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
             "Please allow location access to use this feature");
         return;
       }
-
-      final position = await Geolocator.getCurrentPosition();
+ 
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
       final newPos = LatLng(position.latitude, position.longitude);
-
+ 
       if (!mounted) return;
-
+ 
       setState(() {
         pickedPosition = newPos;
       });
-      mapController.move(newPos, mapController.camera.zoom);
+      mapController.move(newPos, 16);
     } catch (e) {
+      debugPrint('[LocationPicker] useCurrentLocation failed: $e');
       if (!mounted) return;
       Get.snackbar("Location Error", e.toString());
     } finally {
       if (mounted) setState(() => locating = false);
     }
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -361,17 +424,17 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
     );
   }
 }
-
+ 
 class CreateMeetupScreen extends StatefulWidget {
   const CreateMeetupScreen({super.key});
-
+ 
   @override
   State<CreateMeetupScreen> createState() => _CreateMeetupScreenState();
 }
-
+ 
 class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   final controller = Get.find<ExperienceController>();
-
+ 
   final titleController = TextEditingController();
   final categoryController = TextEditingController(text: "Adventure");
   final descriptionController = TextEditingController();
@@ -380,22 +443,22 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   final seatsController = TextEditingController();
   final cityController = TextEditingController();
   final cityFocusNode = FocusNode();
-
+ 
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
   TimeOfDay? selectedEndTime;
   bool isPrivate = false;
   bool showCitySuggestions = false;
-
+ 
   Uint8List? bannerBytes;
   bool saving = false;
-
+ 
   double? selectedLat;
   double? selectedLng;
-
+ 
   bool resolvingCity = false;
   bool resolvingAddress = false;
-
+ 
   final List<String> categoryOptions = const [
     "Adventure",
     "Coffee",
@@ -404,7 +467,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     "Cycling",
     "Food",
   ];
-
+ 
   final List<String> cityOptions = const [
     "Hyderabad",
     "Chennai",
@@ -431,7 +494,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     "Thiruvananthapuram",
     "Guwahati",
   ];
-
+ 
   List<String> get filteredCityOptions {
     final query = cityController.text.trim().toLowerCase();
     if (query.isEmpty) return cityOptions;
@@ -439,7 +502,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
         .where((c) => c.toLowerCase().contains(query))
         .toList();
   }
-
+ 
   @override
   void initState() {
     super.initState();
@@ -450,7 +513,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       });
     });
   }
-
+ 
   @override
   void dispose() {
     titleController.dispose();
@@ -463,14 +526,14 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     cityFocusNode.dispose();
     super.dispose();
   }
-
+ 
   Future<void> pickBanner() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 80,
     );
-
+ 
     if (picked != null) {
       final bytes = await picked.readAsBytes();
       setState(() {
@@ -478,7 +541,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       });
     }
   }
-
+ 
   Future<void> pickDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
@@ -493,7 +556,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       });
     }
   }
-
+ 
   Future<void> pickTime() async {
     final picked = await showTimePicker(
       context: context,
@@ -505,7 +568,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       });
     }
   }
-
+ 
   Future<void> pickEndTime() async {
     final picked = await showTimePicker(
       context: context,
@@ -517,7 +580,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       });
     }
   }
-
+ 
   // ===========================
   // Category picker (bottom sheet) — plain list style: no icons, no
   // checkmarks, alternating row backgrounds, selected row highlighted
@@ -571,7 +634,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                           categoryController.text.trim().toLowerCase() ==
                               c.toLowerCase();
                       final bool isEven = index % 2 == 0;
-
+ 
                       return InkWell(
                         onTap: () => Navigator.pop(context, c),
                         child: Container(
@@ -603,32 +666,38 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
         );
       },
     );
-
+ 
     if (selected != null) {
       setState(() {
         categoryController.text = selected;
       });
     }
   }
-
+ 
   Future<Map<String, String?>> reverseGeocode(double lat, double lng) async {
     try {
       final uri = Uri.parse(
         'https://nominatim.openstreetmap.org/reverse'
         '?lat=$lat&lon=$lng&format=json&zoom=18&addressdetails=1',
       );
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode != 200) return {};
-
+      final response = await http
+          .get(uri, headers: _nominatimHeaders)
+          .timeout(const Duration(seconds: 10));
+ 
+      if (response.statusCode != 200) {
+        debugPrint(
+            '[ReverseGeocode] Nominatim returned ${response.statusCode}: ${response.body}');
+        return {};
+      }
+ 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final address = data['address'] as Map<String, dynamic>?;
       final fullDisplayName = data['display_name'] as String?;
-
+ 
       if (address == null) {
         return {'city': null, 'displayName': fullDisplayName};
       }
-
+ 
       final cityRaw = address['city'] ??
           address['town'] ??
           address['village'] ??
@@ -638,39 +707,40 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
           address['state'];
       final city =
           (cityRaw is String && cityRaw.trim().isNotEmpty) ? cityRaw.trim() : null;
-
+ 
       final shortAddress = _buildShortAddress(address, fallbackCity: city);
-
+ 
       return {
         'city': city,
         'displayName': shortAddress ?? fullDisplayName,
       };
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[ReverseGeocode] failed: $e');
       return {};
     }
   }
-
+ 
   String? _buildShortAddress(Map<String, dynamic> address, {String? fallbackCity}) {
     final parts = <String>[];
-
+ 
     final streetLevel =
         address['road'] ?? address['neighbourhood'] ?? address['suburb'];
     if (streetLevel is String && streetLevel.trim().isNotEmpty) {
       parts.add(streetLevel.trim());
     }
-
+ 
     if (fallbackCity != null && fallbackCity.trim().isNotEmpty) {
       parts.add(fallbackCity.trim());
     }
-
+ 
     final state = address['state'];
     if (state is String && state.trim().isNotEmpty) {
       parts.add(state.trim());
     }
-
+ 
     return parts.isEmpty ? null : parts.join(', ');
   }
-
+ 
   String normalizeCityName(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return trimmed;
@@ -681,25 +751,33 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
             : word[0].toUpperCase() + word.substring(1).toLowerCase())
         .join(' ');
   }
-
+ 
   Future<void> pickLocation() async {
-    LatLng initialPosition = const LatLng(17.3850, 78.4867);
+    // Use the previously picked point if there is one; otherwise try to
+    // center the map on the device's real current location instead of a
+    // hardcoded city (this was previously always Hyderabad, which is why
+    // the map/city could look wrong even before the user tapped anything).
+    LatLng initialPosition;
     if (selectedLat != null && selectedLng != null) {
       initialPosition = LatLng(selectedLat!, selectedLng!);
+    } else {
+      initialPosition = await _getBestGuessLocation();
     }
-
+ 
+    if (!mounted) return;
+ 
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _LocationPickerSheet(initialPosition: initialPosition),
     );
-
+ 
     if (result == null) return;
-
+ 
     final lat = result['lat'] as double;
     final lng = result['lng'] as double;
-
+ 
     if (!mounted) return;
     setState(() {
       selectedLat = lat;
@@ -708,9 +786,9 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       resolvingCity = true;
       resolvingAddress = true;
     });
-
+ 
     final geo = await reverseGeocode(lat, lng);
-
+ 
     if (!mounted) return;
     setState(() {
       resolvingCity = false;
@@ -722,7 +800,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
         locationController.text = geo['displayName']!;
       }
     });
-
+ 
     if (geo['displayName'] == null) {
       Get.snackbar(
         "Couldn't Detect Address",
@@ -730,7 +808,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       );
     }
   }
-
+ 
   bool validate() {
     if (titleController.text.trim().isEmpty) {
       Get.snackbar("Missing Title", "Please enter a meetup title");
@@ -773,14 +851,14 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     }
     return true;
   }
-
+ 
   Future<void> submit() async {
     if (!validate()) return;
-
+ 
     setState(() {
       saving = true;
     });
-
+ 
     final combinedDate = DateTime(
       selectedDate!.year,
       selectedDate!.month,
@@ -788,7 +866,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       selectedTime!.hour,
       selectedTime!.minute,
     );
-
+ 
     final combinedEndDate = DateTime(
       selectedDate!.year,
       selectedDate!.month,
@@ -796,7 +874,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       selectedEndTime!.hour,
       selectedEndTime!.minute,
     );
-
+ 
     if (!combinedEndDate.isAfter(combinedDate)) {
       Get.snackbar("Invalid End Time", "End time must be after the start time");
       setState(() {
@@ -804,13 +882,13 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       });
       return;
     }
-
+ 
     final currentUser = FirebaseAuth.instance.currentUser;
     final String creatorUid = currentUser?.uid ?? '';
     final String creatorName = (currentUser?.displayName?.trim().isNotEmpty ?? false)
         ? currentUser!.displayName!.trim()
         : (currentUser?.phoneNumber ?? 'Organizer');
-
+ 
     final newExperience = Experience(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: titleController.text.trim(),
@@ -833,10 +911,10 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       latitude: selectedLat ?? 0.0,
       longitude: selectedLng ?? 0.0,
     );
-
+ 
     try {
       debugPrint("[CreateMeetup] submit() started");
-
+ 
       await controller.addExperience(newExperience).timeout(
         const Duration(seconds: 15),
         onTimeout: () {
@@ -844,13 +922,13 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
               "Timed out after 15s — check internet connection and Firestore security rules.");
         },
       );
-
+ 
       debugPrint("[CreateMeetup] addExperience() succeeded");
-
+ 
       setState(() {
         saving = false;
       });
-
+ 
       Get.offNamed(AppRoutes.myMeetups);
       Get.snackbar(
         "Meetup Created",
@@ -861,7 +939,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     } catch (e, stackTrace) {
       debugPrint("[CreateMeetup] FAILED: $e");
       debugPrint("[CreateMeetup] StackTrace: $stackTrace");
-
+ 
       setState(() {
         saving = false;
       });
@@ -874,7 +952,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       );
     }
   }
-
+ 
   InputDecoration fieldDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
@@ -887,7 +965,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       ),
     );
   }
-
+ 
   Widget fieldLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 18),
@@ -901,7 +979,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       ),
     );
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -971,13 +1049,13 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                       ),
               ),
             ),
-
+ 
             fieldLabel("MEETUP TITLE"),
             TextField(
               controller: titleController,
               decoration: fieldDecoration("e.g. Sunday Coffee Meetup"),
             ),
-
+ 
             fieldLabel("CATEGORY"),
             GestureDetector(
               onTap: pickCategory,
@@ -1012,14 +1090,14 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                 ),
               ),
             ),
-
+ 
             fieldLabel("DESCRIPTION"),
             TextField(
               controller: descriptionController,
               maxLines: 3,
               decoration: fieldDecoration("What's this meetup about?"),
             ),
-
+ 
             fieldLabel("LOCATION"),
             GestureDetector(
               onTap: pickLocation,
@@ -1062,7 +1140,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                 ),
               ),
             ),
-
+ 
             fieldLabel("CITY"),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1131,7 +1209,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                   ),
               ],
             ),
-
+ 
             fieldLabel("DATE & TIME"),
             Row(
               children: [
@@ -1221,23 +1299,23 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                 ),
               ],
             ),
-
+ 
             fieldLabel("PRICE (₹, 0 for free)"),
             TextField(
               controller: priceController,
               keyboardType: TextInputType.number,
               decoration: fieldDecoration("0"),
             ),
-
+ 
             fieldLabel("TOTAL SEATS"),
             TextField(
               controller: seatsController,
               keyboardType: TextInputType.number,
               decoration: fieldDecoration("e.g. 20"),
             ),
-
+ 
             const SizedBox(height: 10),
-
+ 
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               activeThumbColor: AppColors.primary,
@@ -1258,9 +1336,9 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                 });
               },
             ),
-
+ 
             const SizedBox(height: 30),
-
+ 
             SizedBox(
               width: double.infinity,
               height: 54,
@@ -1291,7 +1369,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                       ),
               ),
             ),
-
+ 
             const SizedBox(height: 20),
           ],
         ),
@@ -1299,3 +1377,4 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     );
   }
 }
+ 

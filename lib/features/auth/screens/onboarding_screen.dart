@@ -35,49 +35,70 @@ class OnboardingScreen extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final item = controller.pages[index];
 
-                  return Padding(
-                    padding: const EdgeInsets.all(30),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 250,
-                          height: 250,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Icon(
-                            Icons.travel_explore,
-                            size: 120,
-                            color: AppColors.primary,
-                          ),
+                  return Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 24,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 220,
+                              height: 220,
+                              decoration: BoxDecoration(
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.08),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Container(
+                                  width: 150,
+                                  height: 150,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary
+                                        .withValues(alpha: 0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.travel_explore,
+                                    size: 76,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 44),
+
+                            Text(
+                              item.title,
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w700,
+                                height: 1.25,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            Text(
+                              item.subtitle,
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                color: AppColors.textSecondary,
+                                fontSize: 15,
+                                height: 1.6,
+                              ),
+                            ),
+                          ],
                         ),
-
-                        const SizedBox(height: 40),
-
-                        Text(
-                          item.title,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(
-                            fontSize: 30,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-
-                        const SizedBox(height: 15),
-
-                        Text(
-                          item.subtitle,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 16,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   );
                 },
@@ -90,8 +111,10 @@ class OnboardingScreen extends StatelessWidget {
                       controller.pages.length - 1;
 
               return Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -107,18 +130,18 @@ class OnboardingScreen extends StatelessWidget {
                             color:
                                 controller.currentPage.value == index
                                     ? AppColors.primary
-                                    : Colors.grey.shade300,
+                                    : AppColors.divider,
                             borderRadius: BorderRadius.circular(20),
                           ),
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 28),
 
                     SizedBox(
                       width: double.infinity,
-                      height: 56,
+                      height: 54,
                       child: ElevatedButton(
                         onPressed: () async {
                           if (lastPage) {
@@ -137,9 +160,14 @@ class OnboardingScreen extends StatelessWidget {
                       onPressed: () async {
                         await finishOnboarding();
                       },
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.textSecondary,
+                        minimumSize: const Size(64, 44),
+                      ),
                       child: const Text("Skip"),
                     ),
                   ],
+                ),
                 ),
               );
             }),

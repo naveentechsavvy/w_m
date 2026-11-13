@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../controllers/friend_request_controller.dart';
 import '../models/friend_request_model.dart';
 
@@ -99,31 +100,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
               final allFriends = controller.friendsWithNames;
 
               if (allFriends.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.people_outline, size: 56, color: Colors.grey.shade300),
-                        const SizedBox(height: 16),
-                        const Text(
-                          "No friends yet",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          "Add friends from a meetup's participants list!",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
+                return const EmptyState(
+                  icon: Icons.people_outline,
+                  title: "No friends yet",
+                  message: "Add friends from a meetup's participants list!",
                 );
               }
 

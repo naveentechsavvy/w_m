@@ -4,6 +4,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../controllers/food_menu_controller.dart';
 import '../models/food_item_model.dart';
 
@@ -63,17 +64,13 @@ class _FoodScreenState extends State<FoodScreen> {
                 final isFiltering =
                     controller.searchQuery.value.trim().isNotEmpty ||
                         controller.selectedFilter.value != 'All';
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Text(
-                      isFiltering
-                          ? "No dishes match your search or filter."
-                          : "No food items available right now. Check back soon!",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.black45, fontSize: 15),
-                    ),
-                  ),
+                return EmptyState(
+                  icon: isFiltering
+                      ? Icons.search_off_rounded
+                      : Icons.restaurant_menu_rounded,
+                  title: isFiltering
+                      ? "No dishes match your search or filter."
+                      : "No food items available right now. Check back soon!",
                 );
               }
 

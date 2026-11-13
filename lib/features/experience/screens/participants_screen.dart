@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../app/theme/colors.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../../friends/controllers/friend_request_controller.dart';
 import '../models/experience_model.dart';
 import '../repositories/experience_repository.dart';
@@ -121,14 +122,9 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : participants.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Text(
-                      "No one has joined yet.",
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ),
+              ? const EmptyState(
+                  icon: Icons.group_outlined,
+                  title: "No one has joined yet.",
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(20),

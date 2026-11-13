@@ -22,16 +22,46 @@ class AppBottomNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: currentIndex,
-      onTap: _onTap,
-      selectedItemColor: AppColors.primary,
-      unselectedItemColor: AppColors.textLight,
-      type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-        BottomNavigationBarItem(icon: Icon(Icons.explore), label: "Explore"),
-      ],
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        border: Border(
+          top: BorderSide(color: AppColors.divider, width: 0.8),
+        ),
+      ),
+      child: BottomNavigationBar(
+        currentIndex: currentIndex,
+        onTap: _onTap,
+        backgroundColor: AppColors.white,
+        elevation: 0,
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: AppColors.textLight,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Icon(Icons.home_outlined),
+            ),
+            activeIcon: Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Icon(Icons.home_rounded),
+            ),
+            label: "Home",
+          ),
+          BottomNavigationBarItem(
+            icon: Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Icon(Icons.explore_outlined),
+            ),
+            activeIcon: Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Icon(Icons.explore),
+            ),
+            label: "Explore",
+          ),
+        ],
+      ),
     );
   }
 }

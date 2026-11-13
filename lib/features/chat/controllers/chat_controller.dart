@@ -17,6 +17,7 @@ import '../repositories/chat_repository.dart';
 ///     'chatType': 'group',
 ///     'meetupId': id,
 ///     'meetupTitle': title,
+///     'organizerId': meetup.createdBy, // required for moderation/mute
 ///   });
 ///
 /// Private / Organizer chat:
@@ -40,25 +41,8 @@ class ChatController extends GetxController {
 
   /// Own messages can be edited/deleted only within this window of
   /// sending — matches the common WhatsApp-style edit-window pattern.
-  /// Same window applies to both actions for simplicity; split them into
-  /// separate durations later if edit and delete ever need different
-  /// limits.
   static const Duration _editWindow = Duration(minutes: 15);
 
-  /// Computes the same roomId the controller will use internally, from
-  /// raw route arguments + the current uid. Exposed as a static method so
-  /// chat_binding.dart can compute an identical tag BEFORE the controller
-  /// is constructed — e.g.:
-  ///
-  ///   final roomId = ChatController.resolveRoomId(Get.arguments, uid);
-  ///   Get.lazyPut<ChatController>(() => ChatController(), tag: roomId);
-  ///
-  /// and ChatScreen resolves with the same tag:
-  ///
-  ///   Get.find<ChatController>(tag: ChatController.resolveRoomId(...))
-  ///
-  /// This keeps group/private/organizer chats from colliding on a single
-  /// untagged controller instance if more than one is ever alive at once.
   static String resolveRoomId(Map args, String currentUid) {
     final chatType = ChatType.fromValue(args['chatType'] as String?);
     final meetupId = args['meetupId'] ?? '';
@@ -80,29 +64,46 @@ class ChatController extends GetxController {
   String? otherUserId;
   String? otherUserName;
 
+  /// Meetup creator's uid. Drives [isOrganizer] — the only thing that
+  /// unlocks moderation (removing others' messages, muting members).
+  /// Null if the caller didn't pass it, in which case isOrganizer is
+  /// always false rather than throwing, so existing callers that don't
+  /// pass it yet just get no moderation UI instead of crashing.
+  String? organizerId;
+
   final RxList<Message> messages = <Message>[].obs;
   final RxBool isSending = false.obs;
   final RxBool isReady = false.obs;
   final TextEditingController textController = TextEditingController();
 
-  /// Null when composing a new message. Set when the user long-presses
-  /// one of their own messages and taps Edit — send() branches on this
-  /// to call editMessage() instead of sendMessage(), and the input bar
-  /// shows an "Editing message" strip above the text field while set.
   final Rxn<Message> editingMessage = Rxn<Message>();
 
+  /// If set and in the future, the current user is muted in this room
+  /// until this time — send() blocks and the input bar shows why.
+  /// Streamed live so an organizer's mute/unmute takes effect without
+  /// the muted user needing to reopen the screen.
+  final Rxn<DateTime> mutedUntil = Rxn<DateTime>();
+
   StreamSubscription<List<Message>>? _sub;
+  StreamSubscription<DateTime?>? _muteSub;
   String _senderName = 'You';
 
-  /// Guards the one-shot auto-retry in _subscribeToMessages() so a
-  /// persistent error (e.g. genuinely not a participant) doesn't loop
-  /// forever — only the very first failure gets retried.
   bool _hasRetriedSubscription = false;
 
   String? get currentUid => FirebaseAuth.instance.currentUser?.uid;
 
-  /// Title shown in the app bar: meetup title for group chat, the other
-  /// person's name for private/organizer chat.
+  /// True only for the meetup's creator. Group chat only — private and
+  /// organizer 1:1 threads have no "members" to moderate.
+  bool get isOrganizer =>
+      chatType == ChatType.group &&
+      organizerId != null &&
+      organizerId!.isNotEmpty &&
+      currentUid == organizerId;
+
+  /// True if the current user is muted in this room right now.
+  bool get isMuted =>
+      mutedUntil.value != null && mutedUntil.value!.isAfter(DateTime.now());
+
   String get displayTitle {
     switch (chatType) {
       case ChatType.group:
@@ -127,12 +128,10 @@ class ChatController extends GetxController {
     meetupTitle = map['meetupTitle'] ?? '';
     otherUserId = map['otherUserId'] as String?;
     otherUserName = map['otherUserName'] as String?;
+    organizerId = map['organizerId'] as String?;
 
     if ((chatType == ChatType.private || chatType == ChatType.organizer) &&
         (otherUserId == null || otherUserId!.isEmpty)) {
-      // Fail loudly during development rather than silently loading the
-      // wrong room — a missing otherUserId here means a caller forgot to
-      // pass route arguments correctly.
       throw ArgumentError(
         'ChatController: otherUserId is required for chatType '
         '${chatType.value}',
@@ -153,13 +152,6 @@ class ChatController extends GetxController {
   Future<void> _init() async {
     await _loadSenderName();
 
-    // Wait for Firebase Auth to report a confirmed user before opening
-    // the messages stream. Firing the subscription immediately here can
-    // race the ID token attaching to the very first Firestore connection,
-    // which makes that first attempt get rejected with permission-denied
-    // even for a legitimate participant — closing and reopening the
-    // screen "fixed" it before only because that created a brand new
-    // subscription after auth had already settled.
     if (FirebaseAuth.instance.currentUser == null) {
       await FirebaseAuth.instance.authStateChanges().firstWhere(
             (user) => user != null,
@@ -167,15 +159,10 @@ class ChatController extends GetxController {
     }
 
     _subscribeToMessages();
+    _subscribeToMuteStatus();
     isReady.value = true;
   }
 
-  // Profile data currently lives in SharedPreferences (see
-  // ProfileViewScreen), not a Firestore users doc — matching that here.
-  // Awaited before subscribing so the first message a user sends can
-  // never go out with the placeholder name "You" — the previous
-  // fire-and-forget version had a race where a fast sender could hit
-  // send() before this resolved, permanently writing the wrong name.
   Future<void> _loadSenderName() async {
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString('full_name') ?? '';
@@ -196,15 +183,8 @@ class ChatController extends GetxController {
         messages.assignAll(list);
       },
       onError: (error) {
-        // Without this handler, a Firestore error (e.g. a missing
-        // composite index on roomId + sentAt) fails silently and the
-        // UI is stuck showing "No messages yet" with no indication why.
         debugPrint('Chat stream error: $error');
 
-        // One-shot auto-retry: if the very first subscription attempt
-        // lost the auth-token race above (or hit any other transient
-        // error), try again once automatically instead of leaving the
-        // user stuck until they manually close and reopen the screen.
         if (!_hasRetriedSubscription) {
           _hasRetriedSubscription = true;
           _sub?.cancel();
@@ -221,25 +201,36 @@ class ChatController extends GetxController {
     );
   }
 
+  /// Only watches the CURRENT user's own mute status — every user only
+  /// needs to know "am I muted", not the mute state of everyone else in
+  /// the room.
+  void _subscribeToMuteStatus() {
+    final uid = currentUid;
+    if (uid == null) return;
+
+    _muteSub = repository
+        .streamMuteStatus(roomId: roomId, userId: uid)
+        .listen((until) {
+      mutedUntil.value = until;
+    }, onError: (e) {
+      debugPrint('Mute status stream error: $e');
+    });
+  }
+
   @override
   void onClose() {
     _sub?.cancel();
+    _muteSub?.cancel();
     textController.dispose();
     super.onClose();
   }
 
-  /// True if [message] belongs to the current user, hasn't already been
-  /// deleted, and is still inside the edit/delete window. Drives both
-  /// whether the long-press menu offers Edit/Delete and whether the
-  /// controller methods below will actually perform the write.
   bool canEditOrDelete(Message message) {
     if (message.senderId != currentUid) return false;
     if (message.isDeleted) return false;
     return DateTime.now().difference(message.sentAt) <= _editWindow;
   }
 
-  /// Enters edit mode for [message]: preloads its text into the input
-  /// field and stores it so send() knows to update instead of create.
   void startEdit(Message message) {
     if (!canEditOrDelete(message)) return;
     editingMessage.value = message;
@@ -249,16 +240,11 @@ class ChatController extends GetxController {
     );
   }
 
-  /// Exits edit mode without saving changes.
   void cancelEdit() {
     editingMessage.value = null;
     textController.clear();
   }
 
-  /// Sends a new message, or — if editingMessage is set — saves an edit
-  /// to that message instead. Kept as a single entry point (rather than
-  /// two separate button handlers) so the input bar's send button always
-  /// does "the right thing" regardless of mode.
   Future<void> send() async {
     final text = textController.text.trim();
     if (text.isEmpty) return;
@@ -268,6 +254,15 @@ class ChatController extends GetxController {
       Get.snackbar(
         'Not signed in',
         'Please sign in again to send messages.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
+    if (isMuted) {
+      Get.snackbar(
+        'You are muted',
+        'You can send messages again after ${_formatMuteUntil(mutedUntil.value!)}.',
         snackPosition: SnackPosition.BOTTOM,
       );
       return;
@@ -291,19 +286,9 @@ class ChatController extends GetxController {
       );
       textController.clear();
 
-      // FIX: sending a message never created anything in the recipient's
-      // Notifications screen — this was the only gap. Only private and
-      // organizer chats have a single, well-defined recipient
-      // (otherUserId); group chats have many participants and aren't
-      // covered here, since "who gets notified" for a group message is
-      // a separate design decision (all members? just ones who haven't
-      // muted it?) rather than a one-line fix.
       if ((chatType == ChatType.private || chatType == ChatType.organizer) &&
           otherUserId != null &&
           otherUserId!.isNotEmpty) {
-        // Fire-and-forget: a failure here shouldn't block the message
-        // from being considered "sent" — the message itself already
-        // wrote successfully above.
         notificationRepository
             .create(
           userId: otherUserId!,
@@ -365,9 +350,6 @@ class ChatController extends GetxController {
       return;
     }
 
-    // If the message being deleted is the one currently being edited,
-    // exit edit mode first so the input bar doesn't stay pointed at a
-    // message that's about to disappear.
     if (editingMessage.value?.id == message.id) {
       cancelEdit();
     }
@@ -382,5 +364,79 @@ class ChatController extends GetxController {
         snackPosition: SnackPosition.BOTTOM,
       );
     }
+  }
+
+  /// Organizer-only: removes ANY message in the room, regardless of
+  /// sender or how long ago it was sent — bypasses canEditOrDelete()
+  /// entirely, since that check is specifically for a user managing
+  /// their own message.
+  Future<void> moderateDeleteMessage(Message message) async {
+    if (!isOrganizer) return;
+    if (message.isDeleted) return;
+
+    try {
+      await repository.deleteMessage(message.id);
+    } catch (e) {
+      debugPrint('Moderate delete error: $e');
+      Get.snackbar(
+        'Couldn\'t remove message',
+        'Please check your connection and try again.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  /// Organizer-only: stops [userId] from sending in this room until
+  /// now + [duration].
+  Future<void> muteMember(String userId, Duration duration) async {
+    if (!isOrganizer) return;
+
+    final uid = currentUid;
+    if (uid == null) return;
+
+    try {
+      await repository.muteUser(
+        roomId: roomId,
+        userId: userId,
+        mutedUntil: DateTime.now().add(duration),
+        mutedBy: uid,
+      );
+      Get.snackbar(
+        'Member muted',
+        'They won\'t be able to send messages for a while.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      debugPrint('Mute member error: $e');
+      Get.snackbar(
+        'Couldn\'t mute',
+        'Please check your connection and try again.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  /// Organizer-only: lifts a mute early.
+  Future<void> unmuteMember(String userId) async {
+    if (!isOrganizer) return;
+
+    try {
+      await repository.unmuteUser(roomId: roomId, userId: userId);
+    } catch (e) {
+      debugPrint('Unmute member error: $e');
+      Get.snackbar(
+        'Couldn\'t unmute',
+        'Please check your connection and try again.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  String _formatMuteUntil(DateTime dt) {
+    final hour24 = dt.hour;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = hour24 >= 12 ? 'PM' : 'AM';
+    final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+    return '$hour12:$minute $period';
   }
 }

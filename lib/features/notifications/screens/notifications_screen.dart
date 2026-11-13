@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../app/theme/colors.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../controllers/notifications_controller.dart';
 import '../widgets/notification_card.dart';
 
@@ -32,15 +33,9 @@ class NotificationsScreen extends StatelessWidget {
         final feed = controller.feed;
 
         if (feed.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Text(
-                "No notifications yet.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 15),
-              ),
-            ),
+          return const EmptyState(
+            icon: Icons.notifications_none_rounded,
+            title: "No notifications yet.",
           );
         }
 

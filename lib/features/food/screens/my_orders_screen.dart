@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../models/order_model.dart';
 import '../repositories/order_repository.dart';
 
@@ -50,15 +51,10 @@ class MyOrdersScreen extends StatelessWidget {
                 }
                 final orders = snapshot.data!;
                 if (orders.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Text(
-                        "No orders yet. Once you order food, it'll show up here.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black45, fontSize: 14),
-                      ),
-                    ),
+                  return const EmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    title: "No orders yet.",
+                    message: "Once you order food, it'll show up here.",
                   );
                 }
 

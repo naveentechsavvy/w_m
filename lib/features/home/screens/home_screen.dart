@@ -35,38 +35,41 @@ class HomeScreen extends StatelessWidget {
 
           return RefreshIndicator(
             onRefresh: controller.loadHome,
+            color: AppColors.primary,
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(20),
-              child: Column(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: Center(
+                child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new, size: 22),
-                        color: AppColors.primary,
+                      _HeaderIconButton(
+                        icon: Icons.arrow_back_ios_new,
+                        iconSize: 18,
                         tooltip: "Back to Choice",
                         onPressed: () => Get.offNamed(AppRoutes.choice),
                       ),
                       Row(
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.groups_outlined, size: 26),
-                            color: AppColors.primary,
+                          _HeaderIconButton(
+                            icon: Icons.groups_outlined,
                             tooltip: "My Meetups",
                             onPressed: () => Get.toNamed(AppRoutes.myMeetups),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.notifications_none, size: 26),
-                            color: AppColors.primary,
+                          const SizedBox(width: 8),
+                          _HeaderIconButton(
+                            icon: Icons.notifications_none,
                             tooltip: "Notifications",
                             onPressed: () => Get.toNamed(AppRoutes.notifications),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.account_circle_outlined, size: 26),
-                            color: AppColors.primary,
+                          const SizedBox(width: 8),
+                          _HeaderIconButton(
+                            icon: Icons.account_circle_outlined,
                             tooltip: "Profile",
                             onPressed: () => Get.toNamed(AppRoutes.profile),
                           ),
@@ -93,7 +96,7 @@ class HomeScreen extends StatelessWidget {
                   // Text can't be const anymore.
                   Text(
                     "Welcome to Weekend Masti 👋",
-                    style: AppTextStyles.heading3,
+                    style: AppTextStyles.heading2.copyWith(fontSize: 22),
                   ),
                   const SizedBox(height: AppSizes.lg),
 
@@ -116,6 +119,13 @@ class HomeScreen extends StatelessWidget {
                           width: double.infinity,
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withOpacity(0.25),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
                             gradient: LinearGradient(
                               colors: [
                                 AppColors.primary,
@@ -170,19 +180,37 @@ class HomeScreen extends StatelessWidget {
 
                   // Same reason as above — no const.
                   Text("My Upcoming Meetup", style: AppTextStyles.heading3),
-                  const SizedBox(height: AppSizes.sm),
+                  const SizedBox(height: 12),
                   controller.upcomingMeetup == null
                       ? Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(AppSizes.lg),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSizes.lg,
+                            vertical: 28,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.card,
                             borderRadius: BorderRadius.circular(AppSizes.radiusMedium),
+                            border: Border.all(color: AppColors.divider, width: 0.8),
                           ),
                           // Column itself can't be const either, since one
                           // of its children (below) uses AppTextStyles.
                           child: Column(
                             children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primaryTint,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.event_available_outlined,
+                                  color: AppColors.primary,
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
                               Text("No upcoming meetups", style: AppTextStyles.heading3),
                               const SizedBox(height: AppSizes.xs),
                               Text(
@@ -203,11 +231,52 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: AppSizes.xl),
                 ],
               ),
+              ),
+              ),
             ),
           );
         }),
       ),
       bottomNavigationBar: const AppBottomNavigation(currentIndex: 0),
+    );
+  }
+}
+
+/// Rounded, outlined icon button used in the home header so all
+/// header actions share the same size, shape and spacing.
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final double iconSize;
+
+  const _HeaderIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.iconSize = 22,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.divider, width: 0.8),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(icon, size: iconSize, color: AppColors.primary),
+          ),
+        ),
+      ),
     );
   }
 }
