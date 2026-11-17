@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/theme/colors.dart';
+import '../../profile/widgets/interests_picker.dart';
 
 class ProfileViewScreen extends StatefulWidget {
   const ProfileViewScreen({super.key});
@@ -39,6 +40,12 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   String city = "";
   String gender = "Male";
   String? avatarUrl;
+
+  /// users/{uid}.interests (labels only, same field the website uses).
+  List<String> interests = [];
+
+  /// Interests being edited (only used while isEditing).
+  List<String> editInterests = [];
 
   // ============================================================
   // EDIT DATA
@@ -105,6 +112,29 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
 
       loading = false;
     });
+
+    _loadInterests();
+  }
+
+  bool _sameInterests(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    final lowerB = b.map((s) => s.toLowerCase()).toSet();
+    return a.every((s) => lowerB.contains(s.toLowerCase()));
+  }
+
+  /// Interests live only in Firestore (website reads/writes them too).
+  Future<void> _loadInterests() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final loaded = parseInterests(doc.data()?['interests']);
+      if (!mounted) return;
+      setState(() => interests = loaded);
+    } catch (e) {
+      debugPrint("[ProfileView] Could not load interests: $e");
+    }
   }
 
   // ============================================================
@@ -114,6 +144,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   void startEditing() {
     setState(() {
       isEditing = true;
+      editInterests = List.of(interests);
 
       nameController.text = name;
       bioController.text = bio;
@@ -390,6 +421,24 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
       return;
     }
 
+    // Interests: optional for existing users who have none (not forced),
+    // but if any are picked — or they already had some — need at least 3.
+    final interestsChanged = !_sameInterests(editInterests, interests);
+    if (interestsChanged &&
+        editInterests.length < kMinInterests &&
+        (editInterests.isNotEmpty || interests.isNotEmpty)) {
+      Get.snackbar(
+        "Pick a few more",
+        kPickMoreInterestsMessage,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.orange,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+      );
+      return;
+    }
+
     if (mounted) {
       setState(() {
         saving = true;
@@ -397,6 +446,17 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     }
 
     try {
+      if (interestsChanged && editInterests.length >= kMinInterests) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .set({'interests': editInterests}, SetOptions(merge: true));
+          interests = List.of(editInterests);
+        }
+      }
+
       final uploadedUrl = await uploadAvatarIfNeeded();
 
       final prefs = await SharedPreferences.getInstance();
@@ -750,6 +810,23 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                 },
         ),
 
+        const SizedBox(height: 24),
+
+        _formSectionLabel("INTERESTS"),
+        if (interests.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Text(
+              "Add your interests",
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
+          ),
+        InterestsPicker(
+          initial: editInterests,
+          enabled: !saving,
+          onChanged: (list) => editInterests = List.of(list),
+        ),
+
         const SizedBox(height: 30),
 
         SizedBox(
@@ -1036,6 +1113,14 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
           ),
         ),
 
+        // Interests (read only) — edited via "Edit profile".
+        if (interests.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          groupHeader("Interests"),
+          const SizedBox(height: 10),
+          InterestChipsView(interests: interests),
+        ],
+
         const SizedBox(height: 24),
 
         // --------------------------------------------------------
@@ -1103,6 +1188,11 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
             icon: Icons.receipt_long_outlined,
             label: "My Orders",
             onTap: () => Get.toNamed(AppRoutes.myOrders),
+          ),
+          groupRow(
+            icon: Icons.local_offer_outlined,
+            label: "My Coupons",
+            onTap: () => Get.toNamed(AppRoutes.myCoupons),
           ),
         ]),
 

@@ -92,7 +92,17 @@ class _ExploreScreenState extends State<ExploreScreen> {
         ? Get.find<AppConfigController>()
         : Get.put(AppConfigController(), permanent: true);
 
-    return Scaffold(
+    // Explore is reached with Get.offNamed (Choice -> Home -> Explore all
+    // replace each other), so it's the only screen on the stack. Without
+    // this, the phone's back button closes the whole app. Send the user
+    // back to the Choice screen instead, same as Home's back arrow.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Get.offNamed(AppRoutes.choice);
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
 
       body: SafeArea(
@@ -379,6 +389,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
         );
       }),
+      ),
     );
   }
 }

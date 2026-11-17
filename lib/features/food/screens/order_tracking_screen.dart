@@ -65,6 +65,23 @@ class OrderTrackingScreen extends StatelessWidget {
                       ],
                     ),
                   )),
+              if (order.discount > 0)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Coupon${order.couponCode != null ? " (${order.couponCode})" : ""}",
+                        style: const TextStyle(fontSize: 13, color: AppColors.success),
+                      ),
+                      Text(
+                        "− ₹${order.discount.toStringAsFixed(0)}",
+                        style: const TextStyle(fontSize: 13, color: AppColors.success),
+                      ),
+                    ],
+                  ),
+                ),
               const Divider(height: 28),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

@@ -121,6 +121,28 @@ class _SplashScreenState extends State<SplashScreen>
     checkUser();
   }
 
+  /// Updates users/{uid}.lastSeenAt on every app open (for the admin
+  /// website's "active users"). One write, fire-and-forget: never
+  /// delays the splash, errors are only logged. isActive is untouched.
+  void _updateLastSeen() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .set(
+            {'lastSeenAt': FieldValue.serverTimestamp()},
+            SetOptions(merge: true),
+          )
+          .catchError((Object e) {
+        debugPrint('[Splash] Could not update lastSeenAt: $e');
+      });
+    } catch (e) {
+      debugPrint('[Splash] Could not update lastSeenAt: $e');
+    }
+  }
+
   /// Profile is complete when the user has entered a real name.
   Future<bool> _isProfileComplete() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -157,6 +179,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     bool profileComplete = false;
     if (loggedIn) {
+      _updateLastSeen();
       profileComplete = await _isProfileComplete();
     }
 

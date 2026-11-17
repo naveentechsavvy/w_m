@@ -68,8 +68,10 @@ Future<LatLng> _getBestGuessLocation() async {
 // API key or billing account required for either.
 // ===========================
 class _LocationPickerSheet extends StatefulWidget {
-  final LatLng initialPosition;
-  const _LocationPickerSheet({required this.initialPosition});
+  /// Previously picked point, or null on first open — then the map starts
+  /// at the fallback and moves to the user's location once GPS answers.
+  final LatLng? initialPosition;
+  const _LocationPickerSheet({this.initialPosition});
  
   @override
   State<_LocationPickerSheet> createState() => _LocationPickerSheetState();
@@ -94,10 +96,37 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
   List<_SearchResult> searchResults = [];
   bool showResults = false;
  
+  late final LatLng _startPosition;
+
+  /// True once the user has tapped the map or chosen a search result,
+  /// so a late GPS answer doesn't move their pin.
+  bool _userPicked = false;
+
   @override
   void initState() {
     super.initState();
-    pickedPosition = widget.initialPosition;
+    _startPosition = widget.initialPosition ?? _fallbackLocation;
+    pickedPosition = _startPosition;
+    // Find the current location in the background — the map is
+    // already visible meanwhile.
+    if (widget.initialPosition == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _locateOnOpen());
+    }
+  }
+
+  Future<void> _locateOnOpen() async {
+    if (!mounted) return;
+    setState(() => locating = true);
+    try {
+      final pos = await _getBestGuessLocation();
+      if (!mounted || _userPicked || pos == _fallbackLocation) return;
+      setState(() => pickedPosition = pos);
+      try {
+        mapController.move(pos, 15);
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => locating = false);
+    }
   }
  
   @override
@@ -168,6 +197,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
   void selectSearchResult(_SearchResult result) {
     final newPos = LatLng(result.lat, result.lon);
     setState(() {
+      _userPicked = true;
       pickedPosition = newPos;
       searchController.text = result.displayName;
       showResults = false;
@@ -229,7 +259,14 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        // Extra bottom space = phone's navigation bar height, so the
+        // Confirm Location button is never hidden behind it.
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          20 + MediaQuery.of(context).viewPadding.bottom,
+        ),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -249,9 +286,27 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
                 ),
               ),
             ),
-            const Text(
-              "Set Meetup Location",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            // Back arrow (same icon as app bars) — closes without picking,
+            // so nothing on Create Meetup changes.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const BackButtonIcon(),
+                  color: AppColors.textPrimary,
+                  tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 4),
+                const Expanded(
+                  child: Text(
+                    "Set Meetup Location",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             const Text(
@@ -345,6 +400,8 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
                       ),
               ),
             const SizedBox(height: 14),
+            Stack(
+              children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: SizedBox(
@@ -353,10 +410,11 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
                 child: FlutterMap(
                   mapController: mapController,
                   options: MapOptions(
-                    initialCenter: widget.initialPosition,
+                    initialCenter: _startPosition,
                     initialZoom: 14,
                     onTap: (tapPosition, point) {
                       setState(() {
+                        _userPicked = true;
                         pickedPosition = point;
                         showResults = false;
                       });
@@ -384,6 +442,26 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
                   ],
                 ),
               ),
+            ),
+                // Small spinner while the current location is being found.
+                if (locating)
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
             TextButton.icon(
@@ -582,9 +660,9 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
   }
  
   // ===========================
-  // Category picker (bottom sheet) — plain list style: no icons, no
-  // checkmarks, alternating row backgrounds, selected row highlighted
-  // in light grey.
+  // Category picker (bottom sheet) — grid of small cards, 3 per row.
+  // The app has no category icons, so each card shows only the name.
+  // Selected card: primary border + light primary tint.
   // ===========================
   Future<void> pickCategory() async {
     final selected = await showModalBottomSheet<String>(
@@ -592,10 +670,14 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final media = MediaQuery.of(context);
+        final current = categoryController.text.trim().toLowerCase();
         return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
           child: Container(
-            padding: const EdgeInsets.all(20),
+            // Bottom safe-area so the last row isn't under the nav bar.
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + media.viewPadding.bottom),
+            constraints: BoxConstraints(maxHeight: media.size.height * 0.75),
             decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -617,49 +699,67 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                 ),
                 const Text(
                   "Categories",
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade200),
-                    borderRadius: BorderRadius.circular(14),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(categoryOptions.length, (index) {
+                ),
+                const SizedBox(height: 16),
+                // Scrolls inside the sheet if the list grows.
+                Flexible(
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: categoryOptions.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      mainAxisExtent: 52,
+                    ),
+                    itemBuilder: (context, index) {
                       final c = categoryOptions[index];
-                      final bool isSelected =
-                          categoryController.text.trim().toLowerCase() ==
-                              c.toLowerCase();
-                      final bool isEven = index % 2 == 0;
- 
-                      return InkWell(
-                        onTap: () => Navigator.pop(context, c),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 16),
-                          color: isSelected
-                              ? Colors.grey.shade300
-                              : (isEven ? Colors.white : Colors.grey.shade100),
-                          child: Text(
-                            c,
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: AppColors.textPrimary,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
+                      final isSelected = current == c.toLowerCase();
+                      return Material(
+                        color: isSelected ? AppColors.primaryTint : Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_fieldRadius),
+                          side: BorderSide(
+                            color: isSelected ? AppColors.primary : AppColors.divider,
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: () => Navigator.pop(context, c),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Center(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  c,
+                                  maxLines: 1,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: isSelected
+                                        ? AppColors.primary
+                                        : AppColors.textPrimary,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       );
-                    }),
+                    },
                   ),
                 ),
-                const SizedBox(height: 10),
               ],
             ),
           ),
@@ -752,27 +852,33 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
         .join(' ');
   }
  
+  bool _openingLocationPicker = false;
+
   Future<void> pickLocation() async {
-    // Use the previously picked point if there is one; otherwise try to
-    // center the map on the device's real current location instead of a
-    // hardcoded city (this was previously always Hyderabad, which is why
-    // the map/city could look wrong even before the user tapped anything).
-    LatLng initialPosition;
-    if (selectedLat != null && selectedLng != null) {
-      initialPosition = LatLng(selectedLat!, selectedLng!);
-    } else {
-      initialPosition = await _getBestGuessLocation();
+    // Ignore double taps while the picker is open.
+    if (_openingLocationPicker) return;
+    _openingLocationPicker = true;
+
+    // Open straight away. Previously this waited for GPS (permission +
+    // up to 10s fix) BEFORE opening, which made it slow. Now the sheet
+    // finds the current location itself while the map is showing.
+    final LatLng? initialPosition = (selectedLat != null && selectedLng != null)
+        ? LatLng(selectedLat!, selectedLng!)
+        : null;
+
+    Map<String, dynamic>? result;
+    try {
+      result = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => _LocationPickerSheet(initialPosition: initialPosition),
+      );
+    } finally {
+      _openingLocationPicker = false;
     }
- 
-    if (!mounted) return;
- 
-    final result = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _LocationPickerSheet(initialPosition: initialPosition),
-    );
- 
+
+    // Back / swipe down without confirming: keep everything as it was.
     if (result == null) return;
  
     final lat = result['lat'] as double;
@@ -953,27 +1059,96 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
     }
   }
  
+  // ---- Shared field look (UI only) ----
+  // Every field — typed or tap-to-pick — uses the same white box, soft
+  // border, 14 radius, ~54 height and 16px inner padding.
+  static const double _fieldRadius = 14;
+  static const double _fieldHeight = 54;
+  static const double _fieldIconSize = 20;
+  static const Color _readOnlyFill = Color(0xFFF4F1EC);
+
+  OutlineInputBorder _fieldBorder([Color color = AppColors.divider, double width = 1]) {
+    return OutlineInputBorder(
+      borderRadius: BorderRadius.circular(_fieldRadius),
+      borderSide: BorderSide(color: color, width: width),
+    );
+  }
+
   InputDecoration fieldDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
+      hintStyle: const TextStyle(color: AppColors.textLight, fontSize: 14),
       filled: true,
       fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide.none,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+      border: _fieldBorder(),
+      enabledBorder: _fieldBorder(),
+      focusedBorder: _fieldBorder(AppColors.primary, 1.4),
+    );
+  }
+
+  /// City is auto-filled from the map, so it looks read-only: tinted
+  /// background, no focus highlight, muted hint. It can still be typed
+  /// in when the city couldn't be detected (same as before).
+  InputDecoration cityDecoration(String hint) {
+    return fieldDecoration(hint).copyWith(
+      fillColor: _readOnlyFill,
+      enabledBorder: _fieldBorder(_readOnlyFill),
+      focusedBorder: _fieldBorder(_readOnlyFill),
+      hintStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+    );
+  }
+
+  BoxDecoration get _boxDecoration => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_fieldRadius),
+        border: Border.all(color: AppColors.divider),
+      );
+
+  /// Tap-to-pick field (Category, Location, Date, Start, End) styled to
+  /// match the text fields.
+  Widget tapField({
+    required IconData icon,
+    required String text,
+    required bool isEmpty,
+    required VoidCallback onTap,
+    List<Widget> trailing = const [],
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: _fieldHeight),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: _boxDecoration,
+        child: Row(
+          children: [
+            Icon(icon, size: _fieldIconSize, color: AppColors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isEmpty ? AppColors.textSecondary : AppColors.textPrimary,
+                ),
+              ),
+            ),
+            ...trailing,
+          ],
+        ),
       ),
     );
   }
- 
+
   Widget fieldLabel(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 18),
+      padding: const EdgeInsets.only(bottom: 8, top: 20),
       child: Text(
         text,
         style: const TextStyle(
           fontSize: 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           color: AppColors.textSecondary,
         ),
       ),
@@ -996,9 +1171,25 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
           ),
         ),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        // Same back arrow and same behaviour (pop the screen), just with
+        // a 44x44 tap area, vertically centred with the title.
+        leading: Center(
+          child: IconButton(
+            icon: const BackButtonIcon(),
+            color: AppColors.textPrimary,
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+            onPressed: () => Navigator.maybePop(context),
+          ),
+        ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+      // SafeArea keeps the Create button above the phone's navigation bar.
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1010,6 +1201,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.divider),
                   image: bannerBytes != null
                       ? DecorationImage(
                           image: MemoryImage(bannerBytes!),
@@ -1050,98 +1242,57 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
               ),
             ),
  
-            fieldLabel("MEETUP TITLE"),
+            fieldLabel("Meetup title"),
             TextField(
               controller: titleController,
               decoration: fieldDecoration("e.g. Sunday Coffee Meetup"),
             ),
- 
-            fieldLabel("CATEGORY"),
-            GestureDetector(
+
+            fieldLabel("Category"),
+            tapField(
+              icon: Icons.category_outlined,
+              text: categoryController.text.isEmpty
+                  ? "Select a category"
+                  : categoryController.text,
+              isEmpty: categoryController.text.isEmpty,
               onTap: pickCategory,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.category_outlined,
-                        size: 18, color: AppColors.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        categoryController.text.isEmpty
-                            ? "Select a category"
-                            : categoryController.text,
-                        style: TextStyle(
-                          color: categoryController.text.isEmpty
-                              ? AppColors.textSecondary
-                              : AppColors.textPrimary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right,
-                        size: 20, color: AppColors.textSecondary),
-                  ],
-                ),
-              ),
+              trailing: const [
+                Icon(Icons.chevron_right,
+                    size: _fieldIconSize, color: AppColors.textSecondary),
+              ],
             ),
- 
-            fieldLabel("DESCRIPTION"),
+
+            fieldLabel("Description"),
             TextField(
               controller: descriptionController,
               maxLines: 3,
               decoration: fieldDecoration("What's this meetup about?"),
             ),
- 
-            fieldLabel("LOCATION"),
-            GestureDetector(
+
+            fieldLabel("Location"),
+            tapField(
+              icon: Icons.location_on_outlined,
+              text: locationController.text.isEmpty
+                  ? "Set location on map"
+                  : locationController.text,
+              isEmpty: locationController.text.isEmpty,
               onTap: pickLocation,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.location_on_outlined,
-                        size: 18, color: AppColors.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        locationController.text.isEmpty
-                            ? "Set location on map"
-                            : locationController.text,
-                        style: TextStyle(
-                          color: locationController.text.isEmpty
-                              ? AppColors.textSecondary
-                              : AppColors.textPrimary,
-                        ),
-                      ),
+              trailing: [
+                if (resolvingAddress)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: SizedBox(
+                      height: 14,
+                      width: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    if (resolvingAddress)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 8),
-                        child: SizedBox(
-                          height: 14,
-                          width: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    const Icon(Icons.chevron_right,
-                        size: 20, color: AppColors.textSecondary),
-                  ],
-                ),
-              ),
+                  ),
+                const Icon(Icons.chevron_right,
+                    size: _fieldIconSize, color: AppColors.textSecondary),
+              ],
             ),
- 
-            fieldLabel("CITY"),
+
+            fieldLabel("City"),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1153,7 +1304,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                       showCitySuggestions = value.trim().isNotEmpty;
                     });
                   },
-                  decoration: fieldDecoration(
+                  decoration: cityDecoration(
                     "Auto-filled after you set a location",
                   ).copyWith(
                     suffixIcon: resolvingCity
@@ -1174,7 +1325,7 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                     constraints: const BoxConstraints(maxHeight: 220),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(_fieldRadius),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.06),
@@ -1209,145 +1360,106 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                   ),
               ],
             ),
- 
-            fieldLabel("DATE & TIME"),
-            Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: pickDate,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today_outlined,
-                              size: 18, color: AppColors.primary),
-                          const SizedBox(width: 10),
-                          Text(
-                            selectedDate == null
-                                ? "Select date"
-                                : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}",
-                            style: const TextStyle(color: AppColors.textPrimary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+
+            fieldLabel("Date & time"),
+            tapField(
+              icon: Icons.calendar_today_outlined,
+              text: selectedDate == null
+                  ? "Select date"
+                  : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}",
+              isEmpty: selectedDate == null,
+              onTap: pickDate,
             ),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
-                  child: GestureDetector(
+                  child: tapField(
+                    icon: Icons.access_time,
+                    text: selectedTime == null
+                        ? "Start time"
+                        : selectedTime!.format(context),
+                    isEmpty: selectedTime == null,
                     onTap: pickTime,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.access_time,
-                              size: 18, color: AppColors.primary),
-                          const SizedBox(width: 10),
-                          Text(
-                            selectedTime == null
-                                ? "Start time"
-                                : selectedTime!.format(context),
-                            style: const TextStyle(color: AppColors.textPrimary),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: GestureDetector(
+                  child: tapField(
+                    icon: Icons.access_time,
+                    text: selectedEndTime == null
+                        ? "End time"
+                        : selectedEndTime!.format(context),
+                    isEmpty: selectedEndTime == null,
                     onTap: pickEndTime,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.access_time_filled,
-                              size: 18, color: AppColors.primary),
-                          const SizedBox(width: 10),
-                          Text(
-                            selectedEndTime == null
-                                ? "End time"
-                                : selectedEndTime!.format(context),
-                            style: const TextStyle(color: AppColors.textPrimary),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
               ],
             ),
- 
-            fieldLabel("PRICE (₹, 0 for free)"),
+
+            fieldLabel("Price (₹, 0 for free)"),
             TextField(
               controller: priceController,
               keyboardType: TextInputType.number,
               decoration: fieldDecoration("0"),
             ),
- 
-            fieldLabel("TOTAL SEATS"),
+
+            fieldLabel("Total seats"),
             TextField(
               controller: seatsController,
               keyboardType: TextInputType.number,
               decoration: fieldDecoration("e.g. 20"),
             ),
- 
-            const SizedBox(height: 10),
- 
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              activeThumbColor: AppColors.primary,
-              title: const Text(
-                "Private Meetup",
-                style: TextStyle(fontWeight: FontWeight.w600),
+
+            const SizedBox(height: 20),
+
+            // Private Meetup — same white card as the fields. Switch is
+            // primary when ON, light grey when OFF, no dark outline.
+            Container(
+              decoration: _boxDecoration,
+              child: SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(_fieldRadius),
+                ),
+                thumbColor: const WidgetStatePropertyAll(Colors.white),
+                trackColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? AppColors.primary
+                      : Colors.grey.shade300,
+                ),
+                trackOutlineColor:
+                    const WidgetStatePropertyAll(Colors.transparent),
+                title: const Text(
+                  "Private Meetup",
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  isPrivate
+                      ? "Only people with the invite code/QR can join"
+                      : "Anyone nearby can find and join",
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+                value: isPrivate,
+                onChanged: (value) {
+                  setState(() {
+                    isPrivate = value;
+                  });
+                },
               ),
-              subtitle: Text(
-                isPrivate
-                    ? "Only people with the invite code/QR can join"
-                    : "Anyone nearby can find and join",
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-              value: isPrivate,
-              onChanged: (value) {
-                setState(() {
-                  isPrivate = value;
-                });
-              },
             ),
- 
-            const SizedBox(height: 30),
- 
+
+            const SizedBox(height: 28),
+
             SizedBox(
               width: double.infinity,
-              height: 54,
+              height: _fieldHeight,
               child: ElevatedButton(
                 onPressed: saving ? null : submit,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(_fieldRadius),
                   ),
                 ),
                 child: saving
@@ -1369,12 +1481,10 @@ class _CreateMeetupScreenState extends State<CreateMeetupScreen> {
                       ),
               ),
             ),
- 
-            const SizedBox(height: 20),
           ],
         ),
+      ),
       ),
     );
   }
 }
- 

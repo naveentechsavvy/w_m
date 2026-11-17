@@ -28,6 +28,8 @@ import '../../features/food/screens/address_screen.dart';
 import '../../features/food/screens/order_success_screen.dart';
 import '../../features/food/screens/order_tracking_screen.dart';
 import '../../features/food/screens/my_orders_screen.dart';
+import '../../features/coupons/screens/my_coupons_screen.dart';
+import '../../features/auth/screens/interests_screen.dart';
 
 class AppPages {
   static final pages = [
@@ -114,6 +116,10 @@ class AppPages {
       page: () => const NameEntryScreen(),
     ),
     GetPage(
+      name: AppRoutes.interests,
+      page: () => const InterestsScreen(),
+    ),
+    GetPage(
       name: AppRoutes.food,
       page: () => const FoodScreen(),
     ),
@@ -136,6 +142,10 @@ class AppPages {
     GetPage(
       name: AppRoutes.myOrders,
       page: () => const MyOrdersScreen(),
+    ),
+    GetPage(
+      name: AppRoutes.myCoupons,
+      page: () => const MyCouponsScreen(),
     ),
   ];
 }

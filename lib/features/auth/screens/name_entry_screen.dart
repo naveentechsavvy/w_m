@@ -9,6 +9,7 @@ import '../../../app/theme/colors.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/section_title.dart';
+import '../../../core/services/activity_logger.dart';
 
 /// Shown after every OTP login. For a brand new account this is a
 /// real ask ("what's your name?"); for a returning user, their
@@ -25,6 +26,10 @@ class _NameEntryScreenState extends State<NameEntryScreen> {
   final _nameController = TextEditingController();
   bool _loadingExisting = true;
   bool _saving = false;
+
+  /// True for a brand-new user: no real name saved before AND no
+  /// interests yet. Only they see the Interests step next.
+  bool _isNewUser = false;
 
   @override
   void initState() {
@@ -45,6 +50,12 @@ class _NameEntryScreenState extends State<NameEntryScreen> {
       if (existingName != null && !existingName.startsWith('User ')) {
         _nameController.text = existingName;
       }
+
+      final hasRealName =
+          existingName != null && !existingName.startsWith('User ');
+      final interests = data?['interests'];
+      final hasInterests = interests is List && interests.isNotEmpty;
+      _isNewUser = !hasRealName && !hasInterests;
     }
 
     if (!mounted) return;
@@ -82,6 +93,14 @@ class _NameEntryScreenState extends State<NameEntryScreen> {
             .collection('users')
             .doc(uid)
             .set({'name': name}, SetOptions(merge: true));
+
+        // Admin website activity log (best-effort, doesn't wait).
+        logActivity(
+          userId: uid,
+          userName: name,
+          type: ActivityType.profileUpdated,
+          title: 'Updated profile',
+        );
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -89,7 +108,9 @@ class _NameEntryScreenState extends State<NameEntryScreen> {
       await prefs.setBool("profile_completed", true);
 
       if (!mounted) return;
-      Get.offAllNamed(AppRoutes.choice);
+      // New users pick interests first; the Interests screen then goes
+      // to Choice. Everyone else goes to Choice as before.
+      Get.offAllNamed(_isNewUser ? AppRoutes.interests : AppRoutes.choice);
     } catch (e) {
       debugPrint("[NameEntry] Failed to save name: $e");
       if (!mounted) return;

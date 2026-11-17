@@ -90,5 +90,9 @@ flutter_launcher_icons:
   remove_alpha_ios: true
   image_path: "assets/icon/icon.png"
   min_sdk_android: 21
-  adaptive_icon_background: "assets/icon/background.png"
+  # Same dark brown as icon.png (background.png was pure black).
+  adaptive_icon_background: "#160502"
   adaptive_icon_foreground: "assets/icon/foreground.png"
+  # foreground.png already has padding around the logo, so don't shrink
+  # it again (the default 16% inset made the logo look small on phones).
+  adaptive_icon_foreground_inset: 0

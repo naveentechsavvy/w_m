@@ -52,6 +52,11 @@ class FoodOrder {
   final Map<String, dynamic>? deliveryAddress;
   final DateTime? createdAt;
 
+  /// Coupon info (only on orders placed with a coupon).
+  /// [total] is always the amount paid, after the discount.
+  final double discount;
+  final String? couponCode;
+
   FoodOrder({
     required this.id,
     required this.userId,
@@ -60,6 +65,8 @@ class FoodOrder {
     required this.status,
     this.deliveryAddress,
     this.createdAt,
+    this.discount = 0,
+    this.couponCode,
   });
 
   factory FoodOrder.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -78,6 +85,8 @@ class FoodOrder {
           ? Map<String, dynamic>.from(data['deliveryAddress'])
           : null,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      discount: (data['discount'] ?? 0).toDouble(),
+      couponCode: data['couponCode'] as String?,
     );
   }
 

@@ -25,7 +25,16 @@ class HomeScreen extends StatelessWidget {
         ? Get.find<AppConfigController>()
         : Get.put(AppConfigController(), permanent: true);
 
-    return Scaffold(
+    // Home replaces the Choice screen (Get.offNamed), so it's the only
+    // screen on the stack and the phone's back button would close the
+    // app. Go back to Choice instead, same as the back arrow above.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Get.offNamed(AppRoutes.choice);
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Obx(() {
@@ -45,39 +54,45 @@ class HomeScreen extends StatelessWidget {
                 child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _HeaderIconButton(
-                        icon: Icons.arrow_back_ios_new,
-                        iconSize: 18,
-                        tooltip: "Back to Choice",
-                        onPressed: () => Get.offNamed(AppRoutes.choice),
-                      ),
-                      Row(
-                        children: [
-                          _HeaderIconButton(
-                            icon: Icons.groups_outlined,
-                            tooltip: "My Meetups",
-                            onPressed: () => Get.toNamed(AppRoutes.myMeetups),
-                          ),
-                          const SizedBox(width: 8),
-                          _HeaderIconButton(
-                            icon: Icons.notifications_none,
-                            tooltip: "Notifications",
-                            onPressed: () => Get.toNamed(AppRoutes.notifications),
-                          ),
-                          const SizedBox(width: 8),
-                          _HeaderIconButton(
-                            icon: Icons.account_circle_outlined,
-                            tooltip: "Profile",
-                            onPressed: () => Get.toNamed(AppRoutes.profile),
-                          ),
-                        ],
-                      ),
-                    ],
+                  // Top bar: back arrow on the left (goes to Choice, same
+                  // as the phone's back button), 3 action icons on the
+                  // right, all vertically centred.
+                  SizedBox(
+                    height: 56,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          icon: const BackButtonIcon(),
+                          color: AppColors.textPrimary,
+                          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                          padding: EdgeInsets.zero,
+                          constraints:
+                              const BoxConstraints.tightFor(width: 44, height: 44),
+                          onPressed: () => Get.offNamed(AppRoutes.choice),
+                        ),
+                        const Spacer(),
+                        _HeaderIconButton(
+                          icon: Icons.groups_outlined,
+                          tooltip: "My Meetups",
+                          onPressed: () => Get.toNamed(AppRoutes.myMeetups),
+                        ),
+                        const SizedBox(width: 10),
+                        _HeaderIconButton(
+                          icon: Icons.notifications_none,
+                          tooltip: "Notifications",
+                          onPressed: () => Get.toNamed(AppRoutes.notifications),
+                        ),
+                        const SizedBox(width: 10),
+                        _HeaderIconButton(
+                          icon: Icons.account_circle_outlined,
+                          tooltip: "Profile",
+                          onPressed: () => Get.toNamed(AppRoutes.profile),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: AppSizes.lg),
+                  const SizedBox(height: 20),
                   Obx(() => HomeSearchBar(
                         showVoiceIcon: true,
                         isListening: controller.isListening.value,
@@ -90,13 +105,18 @@ class HomeScreen extends StatelessWidget {
                           }
                         },
                       )),
-                  const SizedBox(height: AppSizes.lg),
-                  // AppTextStyles.heading3 is no longer a compile-time
-                  // constant (GoogleFonts.poppins() isn't const), so this
-                  // Text can't be const anymore.
-                  Text(
-                    "Welcome to Weekend Masti 👋",
-                    style: AppTextStyles.heading2.copyWith(fontSize: 22),
+                  const SizedBox(height: 32),
+                  // One line only: on narrow phones the text scales down a
+                  // little instead of pushing the 👋 onto its own line.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Welcome to Weekend Masti 👋",
+                      maxLines: 1,
+                      softWrap: false,
+                      style: AppTextStyles.heading2.copyWith(fontSize: 21),
+                    ),
                   ),
                   const SizedBox(height: AppSizes.lg),
 
@@ -238,23 +258,25 @@ class HomeScreen extends StatelessWidget {
         }),
       ),
       bottomNavigationBar: const AppBottomNavigation(currentIndex: 0),
+      ),
     );
   }
 }
 
-/// Rounded, outlined icon button used in the home header so all
-/// header actions share the same size, shape and spacing.
+/// Round icon button with a soft primary-tint background (no border),
+/// used in the home header so all actions share the same size, shape
+/// and spacing.
 class _HeaderIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;
-  final double iconSize;
+
+  static const double _iconSize = 23;
 
   const _HeaderIconButton({
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.iconSize = 22,
   });
 
   @override
@@ -262,18 +284,15 @@ class _HeaderIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: AppColors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: AppColors.divider, width: 0.8),
-        ),
+        color: AppColors.primaryTint,
+        shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
           child: SizedBox(
             width: 44,
             height: 44,
-            child: Icon(icon, size: iconSize, color: AppColors.primary),
+            child: Icon(icon, size: _iconSize, color: AppColors.primary),
           ),
         ),
       ),

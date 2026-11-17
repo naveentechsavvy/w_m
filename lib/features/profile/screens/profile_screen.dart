@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/routes/app_routes.dart';
 import '../../../app/theme/colors.dart';
+import '../../../core/services/activity_logger.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -450,6 +451,14 @@ class _ProfileScreenState
                 FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
+        );
+
+        // Admin website activity log (best-effort, doesn't wait).
+        logActivity(
+          userId: uid,
+          userName: name,
+          type: ActivityType.profileUpdated,
+          title: 'Updated profile',
         );
       }
 

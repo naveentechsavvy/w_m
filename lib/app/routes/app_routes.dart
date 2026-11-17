@@ -25,6 +25,7 @@ abstract class AppRoutes {
   static const writeReview = '/write-review';
   static const participants = '/participants';
   static const String nameEntry = "/name-entry";
+  static const String interests = "/interests";
 
   static const premiumPlan = '/premium-plan';
 
@@ -33,4 +34,5 @@ abstract class AppRoutes {
   static const String orderSuccess = '/order-success';
   static const String orderTracking = '/order-tracking';
   static const String myOrders = '/my-orders';
+  static const String myCoupons = '/my-coupons';
 }

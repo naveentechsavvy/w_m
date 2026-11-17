@@ -202,7 +202,7 @@ class _AddressScreenState extends State<AddressScreen> {
                             ),
                           )
                         : Text(
-                            "Proceed to Pay  •  \u20b9${controller.cartTotal.toStringAsFixed(0)}",
+                            "Proceed to Pay  •  \u20b9${controller.payableTotal.toStringAsFixed(0)}",
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,

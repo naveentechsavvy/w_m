@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/services/activity_logger.dart';
 import '../models/experience_model.dart';
 import '../models/join_request_model.dart';
 import '../../notifications/models/app_notification_model.dart';
@@ -39,6 +40,15 @@ class JoinRequestDataSource {
       'status': 'pending',
       'requestedAt': Timestamp.now(),
     });
+
+    // Admin website activity log (best-effort, doesn't wait).
+    logActivity(
+      userId: _uid,
+      userName: requesterName,
+      type: ActivityType.other,
+      title: 'Requested to join "${meetup.title}"',
+      meetupId: meetup.id,
+    );
   }
 
   /// Approves a join request AND adds the requester to the meetup's
@@ -77,8 +87,13 @@ class JoinRequestDataSource {
     final requestRef = _col.doc(requestId);
     String? requesterId;
     String? meetupTitle;
+    // For the activity log: only set when this call actually added the
+    // requester to the meetup (not on a repeat/already-joined approve).
+    String? joinedMeetupId;
+    String? requesterName;
 
     await FirebaseFirestore.instance.runTransaction((txn) async {
+      joinedMeetupId = null;
       final requestSnap = await txn.get(requestRef);
       if (!requestSnap.exists) {
         throw StateError('Join request not found.');
@@ -132,7 +147,20 @@ class JoinRequestDataSource {
         'joined': joined + 1,
         'approvedMemberIds': FieldValue.arrayUnion([requesterId]),
       });
+      joinedMeetupId = meetupId;
+      requesterName = requestData['requesterName'] as String?;
     });
+
+    // Admin website activity log for the JOINER (best-effort).
+    if (requesterId != null && joinedMeetupId != null) {
+      logActivity(
+        userId: requesterId!,
+        userName: requesterName ?? 'Someone',
+        type: ActivityType.meetupJoined,
+        title: 'Joined "${meetupTitle ?? 'the meetup'}"',
+        meetupId: joinedMeetupId,
+      );
+    }
 
     if (requesterId != null) {
       await _notificationRepository.create(
